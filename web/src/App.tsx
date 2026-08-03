@@ -213,8 +213,23 @@ function SlackMessageRow({ message }: { message: SlackMessage }) {
 }
 
 function SlackSourceCard() {
-  const { health, messages, messagesState, refreshMessages } = useRunbook();
+  const {
+    health,
+    messages,
+    messagesState,
+    messagesSyncing,
+    messagesLastSyncedAt,
+    messagesError,
+    refreshMessages
+  } = useRunbook();
   const connected = healthFlag(health, "slack_connected");
+  const syncLabel = messagesSyncing
+    ? "Syncing…"
+    : messagesError
+      ? "Live sync interrupted"
+      : messagesLastSyncedAt
+        ? `Live sync · ${compactTime(messagesLastSyncedAt)}`
+        : "Live sync starting";
   return (
     <section className="card slack-card">
       <div className="card-head">
@@ -226,15 +241,21 @@ function SlackSourceCard() {
           </div>
         </div>
         <div className="head-actions">
+          <span className={`sync-status ${messagesError ? "error" : ""}`} role="status">
+            <span className={`status-dot ${messagesError ? "offline" : messagesLastSyncedAt ? "online" : ""}`} />
+            {syncLabel}
+          </span>
           <Badge tone={connected === true ? "good" : connected === false ? "bad" : "neutral"}>
             {connected === true ? "CONNECTED" : connected === false ? "NOT CONNECTED" : "STATUS UNKNOWN"}
           </Badge>
-          <button className="button ghost compact" onClick={() => void refreshMessages()}>Refresh</button>
+          <button className="button ghost compact" disabled={messagesSyncing} onClick={() => void refreshMessages()}>
+            {messagesSyncing ? "Refreshing…" : "Refresh"}
+          </button>
         </div>
       </div>
       <div className="message-list">
         {messagesState === "loading" && <Empty title="Loading Slack messages" detail="Waiting for GET /bridge/slack/messages." />}
-        {messagesState === "error" && <Empty title="Slack messages unavailable" detail="The bridge did not return message data. Use manual intake below." />}
+        {messagesState === "error" && messages.length === 0 && <Empty title="Slack messages unavailable" detail="The bridge did not return message data. Live sync will retry while this page is visible." />}
         {messagesState === "ready" && messages.length === 0 && <Empty title="No Slack messages" detail="The connected bridge returned an empty list; no demo messages were fabricated." />}
         {messages.map((message) => <SlackMessageRow key={message.id} message={message} />)}
       </div>
@@ -276,21 +297,48 @@ function AgentPipeline() {
     connectorActions,
     resolutions,
     running,
-    health
+    health,
+    timeline
   } = useRunbook();
   const proposal = proposals.find((item) => item.alert_id === selectedAlertId);
   const knownProposalIds = new Set(
     [...proposals].filter((item) => item.alert_id === selectedAlertId).map((item) => item.proposal_id)
   );
+  timeline.forEach((event) => {
+    const payload = event.payload as unknown as Record<string, unknown>;
+    if (payload.alert_id === selectedAlertId && typeof payload.proposal_id === "string") {
+      knownProposalIds.add(payload.proposal_id);
+    }
+  });
   const resolution = resolutions.find((item) => item.alert_id === selectedAlertId);
   if (resolution?.reviewer_decision.proposal_id) knownProposalIds.add(resolution.reviewer_decision.proposal_id);
   const hasDecision = decisions.some((item) => knownProposalIds.has(item.proposal_id)) || Boolean(resolution);
   const hasAction = actions.some((item) => item.alert_id === selectedAlertId);
   const hasConnectorAction = connectorActions.some(
-    (item) => !item.alert_id || item.alert_id === selectedAlertId
+    (item) =>
+      item.alert_id === selectedAlertId ||
+      (!item.alert_id && Boolean(item.proposal_id && knownProposalIds.has(item.proposal_id)))
   );
   const hasAlert = alerts.some((item) => item.alert_id === selectedAlertId);
   const hasHypotheses = hypotheses.some((item) => item.alert_id === selectedAlertId);
+  const hasRelevantTimeline = selectedAlertId
+    ? timeline.some((event) => {
+        const payload = event.payload as unknown as Record<string, unknown>;
+        return payload.alert_id === selectedAlertId;
+      })
+    : false;
+  const hasIncidentContext = running || Boolean(
+    selectedAlertId && (
+      hasRelevantTimeline ||
+      hasAlert ||
+      hasHypotheses ||
+      proposal ||
+      hasDecision ||
+      hasAction ||
+      hasConnectorAction ||
+      resolution
+    )
+  );
 
   const stages: { title: string; detail: string; status: StageStatus }[] = [
     { title: "Slack / manual intake", detail: "Bridge complaint", status: hasAlert ? "done" : running ? "active" : "waiting" },
@@ -309,18 +357,26 @@ function AgentPipeline() {
     <section className="card pipeline-card">
       <div className="card-head">
         <div><h2>Agent pipeline</h2><p>{selectedAlertId ? `Alert ${selectedAlertId}` : "Select and run an intake item to begin"}</p></div>
-        <Badge tone={running ? "warn" : resolution ? "good" : "neutral"}>{running ? "IN PROGRESS" : resolution ? "RESOLVED" : "IDLE"}</Badge>
+        <Badge tone={running ? "warn" : resolution ? "good" : "neutral"}>{running ? "IN PROGRESS" : resolution ? "RESOLVED" : hasIncidentContext ? "OBSERVED" : "IDLE"}</Badge>
       </div>
-      <div className="pipeline-grid">
-        {stages.map((stage, index) => (
-          <div className={`pipeline-node ${stage.status}`} key={stage.title}>
-            <div className="node-top"><span className="node-index">{index + 1}</span><span className="node-state">{stage.status}</span></div>
-            <strong>{stage.title}</strong><small>{stage.detail}</small>
-            {index < stages.length - 1 && <span className="connector-line" />}
-          </div>
-        ))}
-      </div>
-      {!selectedAlertId && <div className="pipeline-note">No backend run has been observed in this browser session.</div>}
+      {hasIncidentContext ? (
+        <div className="pipeline-grid">
+          {stages.map((stage, index) => (
+            <div className={`pipeline-node ${stage.status}`} key={stage.title}>
+              <div className="node-top"><span className="node-index">{index + 1}</span><span className="node-state">{stage.status}</span></div>
+              <strong>{stage.title}</strong><small>{stage.detail}</small>
+              {index < stages.length - 1 && <span className="connector-line" />}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="pipeline-empty">
+          <Empty
+            title="No active incident"
+            detail="Run a real Slack message or manual complaint. The stage graph appears only after intake or a pipeline event establishes an incident."
+          />
+        </div>
+      )}
     </section>
   );
 }

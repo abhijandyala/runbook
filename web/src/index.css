@@ -82,6 +82,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .card-head h2 { margin: 0; font-size: 12px; font-weight: 600; }
 .card-head p { margin: 3px 0 0; font-size: 10px; color: #626a78; }
 .head-actions { display: flex; align-items: center; gap: 8px; }
+.sync-status { display: inline-flex; align-items: center; gap: 6px; color: #68717e; font-size: 8px; white-space: nowrap; }
+.sync-status.error { color: #b66d55; }
 .integration-title { display: flex; align-items: center; gap: 12px; }
 .integration-icon { width: 34px; height: 34px; display: grid; place-items: center; background: #0d0d0f; border: 1px solid #2a2a30; border-radius: 7px; flex: 0 0 auto; }
 .integration-icon.small { width: 30px; height: 30px; }
@@ -139,6 +141,8 @@ textarea::placeholder, input::placeholder { color: #4d535e; }
 .connector-line { height: 1px; width: 23px; background: #34343b; position: absolute; top: 46px; left: calc(100% + 1px); }
 .pipeline-node.done .connector-line { background: #066c6c; }
 .pipeline-note { border-top: 1px solid #242429; text-align: center; color: #565d69; font-size: 9px; padding: 10px; }
+.pipeline-empty { min-height: 238px; display: grid; place-items: center; background-image: radial-gradient(#303037 .7px, transparent .7px); background-size: 20px 20px; }
+.pipeline-empty .empty { min-height: 238px; }
 
 .evidence-preview-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
 .brief-body { padding: 15px 17px; color: #9ea7b4; font-size: 10px; line-height: 1.6; }
@@ -330,6 +334,7 @@ textarea::placeholder, input::placeholder { color: #4d535e; }
   .write-mode-banner span { font-size: 8px; }
   .stat-strip { grid-template-columns: repeat(2, 1fr); }
   .stat-strip span:nth-child(2) { border-right: 0; }
+  .slack-card .card-head, .slack-card .head-actions { align-items: flex-start; flex-direction: column; }
   .message-row { flex-wrap: wrap; }
   .message-row .button { margin-left: 40px; }
   .pipeline-grid { grid-template-columns: repeat(2, 1fr); }

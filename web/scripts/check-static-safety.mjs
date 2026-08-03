@@ -34,6 +34,7 @@ for (const path of files) {
 const contracts = readFileSync(join(sourceRoot, "contracts.ts"), "utf8");
 const api = readFileSync(join(sourceRoot, "api.ts"), "utf8");
 const app = readFileSync(join(sourceRoot, "App.tsx"), "utf8");
+const store = readFileSync(join(sourceRoot, "store.tsx"), "utf8");
 
 for (const [label, source, required] of [
   ["contracts.ts", contracts, "connector_live_writes_enabled"],
@@ -41,8 +42,16 @@ for (const [label, source, required] of [
   ["api.ts", api, "execute_live_writes"],
   ["api.ts", api, "live_writes_confirmation"],
   ["api.ts", api, '"connector_action"'],
+  ["api.ts", api, "stableSlackMessageId"],
   ["App.tsx", app, "safeExternalUrl"],
-  ["App.tsx", app, 'rel="noopener noreferrer"']
+  ["App.tsx", app, 'rel="noopener noreferrer"'],
+  ["App.tsx", app, 'title="No active incident"'],
+  ["App.tsx", app, "hasIncidentContext"],
+  ["store.tsx", store, 'document.visibilityState === "visible"'],
+  ["store.tsx", store, 'document.addEventListener("visibilitychange", poll)'],
+  ["store.tsx", store, "window.setInterval(poll, 4_500)"],
+  ["store.tsx", store, "messagesRequestRef"],
+  ["store.tsx", store, "activeRequest?.abort()"]
 ]) {
   if (!source.includes(required)) failures.push(`${label}: missing safety requirement ${required}`);
 }

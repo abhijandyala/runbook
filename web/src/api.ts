@@ -54,6 +54,26 @@ export function getBridgeHealth(signal?: AbortSignal): Promise<BridgeHealth> {
   return requestJson<BridgeHealth>("/bridge/health", { signal });
 }
 
+function stableSlackMessageId(item: Record<string, unknown>): string {
+  const supplied = item.id ?? item.client_msg_id ?? item.ts;
+  if (supplied != null && String(supplied).trim()) return String(supplied);
+  const identity = JSON.stringify([
+    item.channel ?? "",
+    item.channel_name ?? item.name ?? "",
+    item.user ?? "",
+    item.user_name ?? "",
+    item.timestamp ?? "",
+    item.text ?? "",
+    item.permalink ?? ""
+  ]);
+  let hash = 2_166_136_261;
+  for (let index = 0; index < identity.length; index += 1) {
+    hash ^= identity.charCodeAt(index);
+    hash = Math.imul(hash, 16_777_619);
+  }
+  return `slack-${(hash >>> 0).toString(36)}`;
+}
+
 export async function getSlackMessages(signal?: AbortSignal): Promise<SlackMessage[]> {
   const body = await requestJson<unknown>("/bridge/slack/messages", { signal });
   const raw = Array.isArray(body)
@@ -62,11 +82,11 @@ export async function getSlackMessages(signal?: AbortSignal): Promise<SlackMessa
       ? (body as { messages: unknown[] }).messages
       : [];
 
-  return raw
+  const messages = raw
     .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
-    .map((item, index) => ({
+    .map((item) => ({
       ...item,
-      id: String(item.id ?? item.client_msg_id ?? item.ts ?? `slack-${index}`),
+      id: stableSlackMessageId(item),
       text: String(item.text ?? ""),
       user: item.user == null ? undefined : String(item.user),
       user_name: item.user_name == null ? undefined : String(item.user_name),
@@ -83,6 +103,7 @@ export async function getSlackMessages(signal?: AbortSignal): Promise<SlackMessa
       permalink: item.permalink == null ? undefined : String(item.permalink)
     }))
     .filter((message) => message.text.trim().length > 0);
+  return [...new Map(messages.map((message) => [message.id, message])).values()];
 }
 
 export interface ComplaintRequest {
