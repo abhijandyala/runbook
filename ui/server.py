@@ -14,10 +14,21 @@ from time import perf_counter
 from typing import Literal
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, ValidationError
 
+from adapters import (
+    SlackReadError,
+    assemble_bridge_report,
+    complaint_to_alert,
+    connector_dry_run,
+    connector_status,
+    fetch_slack_messages,
+    redact_complaint,
+)
+from adapters.config import slack_token
 from agents.diagnostician import diagnose
 from agents.remediator import enforce_action_policy, remediate
 from agents.reviewer import (
@@ -31,6 +42,8 @@ from agents.reviewer import (
 from contracts import (
     ActionProposal,
     Alert,
+    BridgeComplaintRequest,
+    BridgeReport,
     HypothesisSet,
     Resolution,
     ReviewerDecision,
@@ -51,6 +64,7 @@ from streams.stream_names import (
 
 logger = logging.getLogger(__name__)
 INDEX_PATH = Path(__file__).resolve().with_name("index.html")
+DEMO_DIST_PATH = Path(__file__).resolve().parent.parent / "web" / "dist"
 SIMULATED_RECOVERY_DELAY_SECONDS = 0.25
 
 
@@ -145,11 +159,17 @@ class M3Runtime:
         self._alert_history: dict[str, Alert] = {}
         self._hypothesis_history: dict[str, HypothesisSet] = {}
         self._proposal_history: dict[str, ActionProposal] = {}
+        self._decision_history: dict[str, ReviewerDecision] = {}
+        self._resolution_history: dict[str, Resolution] = {}
+        self._bridge_history: dict[str, BridgeComplaintRequest] = {}
         self._pending_proposals: dict[str, ActionProposal] = {}
         self._owned_proposal_ids: set[str] = set()
         self._processed_proposal_ids: set[str] = set()
+        self._submitted_decisions: dict[str, ReviewerDecision] = {}
+        self._submitted_decision_requests: dict[str, DecisionRequest] = {}
         self._broadcast_resolution_ids: set[str] = set()
         self._decision_lock = asyncio.Lock()
+        self._bridge_lock = asyncio.Lock()
 
     async def start(self) -> None:
         stack = AsyncExitStack()
@@ -218,7 +238,6 @@ class M3Runtime:
         )
 
     async def create_alert(self, request: AlertRequest) -> str:
-        streams = self._require_streams()
         alert_id = f"alrt_ui_{uuid4().hex[:12]}"
         alert = Alert(
             alert_id=alert_id,
@@ -234,18 +253,76 @@ class M3Runtime:
                 "m3_session_id": self.session_id,
             },
         )
-        self._owned_alerts[alert_id] = OwnedAlert(
-            service=request.service,
+        await self._publish_owned_alert(
+            alert,
             graph_enabled=request.graph_enabled,
         )
-        self._alert_history[alert_id] = alert
+        return alert_id
+
+    async def _publish_owned_alert(
+        self,
+        alert: Alert,
+        *,
+        graph_enabled: bool,
+    ) -> None:
+        """Publish through the one LaserData-owned alert ingress path."""
+
+        streams = self._require_streams()
+        self._owned_alerts[alert.alert_id] = OwnedAlert(
+            service=alert.service,
+            graph_enabled=graph_enabled,
+        )
+        self._alert_history[alert.alert_id] = alert
         try:
             await streams.publish(TOPIC_ALERTS, alert)
         except Exception:
-            self._owned_alerts.pop(alert_id, None)
-            self._alert_history.pop(alert_id, None)
+            self._owned_alerts.pop(alert.alert_id, None)
+            self._alert_history.pop(alert.alert_id, None)
             raise
-        return alert_id
+
+    async def create_bridge_complaint(
+        self,
+        complaint: BridgeComplaintRequest,
+    ) -> str:
+        alert = complaint_to_alert(complaint, session_id=self.session_id)
+        async with self._bridge_lock:
+            if alert.alert_id in self._bridge_history:
+                return alert.alert_id
+            self._bridge_history[alert.alert_id] = redact_complaint(complaint)
+            try:
+                await self._publish_owned_alert(
+                    alert,
+                    graph_enabled=complaint.graph_enabled,
+                )
+            except Exception:
+                self._bridge_history.pop(alert.alert_id, None)
+                raise
+        return alert.alert_id
+
+    def get_bridge_report(self, alert_id: str) -> BridgeReport:
+        complaint = self._bridge_history.get(alert_id)
+        alert = self._alert_history.get(alert_id)
+        if complaint is None or alert is None:
+            raise LookupError("Complaint Bridge alert was not found")
+        proposal = next(
+            (
+                item
+                for item in reversed(tuple(self._proposal_history.values()))
+                if item.alert_id == alert_id
+            ),
+            None,
+        )
+        guild = getattr(self, "guild", None)
+        guild_mode = getattr(guild, "mode", "not-configured")
+        return assemble_bridge_report(
+            alert=alert,
+            complaint=complaint,
+            hypotheses=self._hypothesis_history.get(alert_id),
+            proposal=proposal,
+            decision=self._decision_history.get(alert_id),
+            resolution=self._resolution_history.get(alert_id),
+            guild_mode=guild_mode,
+        )
 
     async def submit_decision(
         self,
@@ -253,6 +330,15 @@ class M3Runtime:
     ) -> ReviewerDecision:
         streams = self._require_streams()
         async with self._decision_lock:
+            submitted = self._submitted_decisions.get(request.proposal_id)
+            if submitted is not None:
+                original = self._submitted_decision_requests[request.proposal_id]
+                if request != original:
+                    raise ValueError(
+                        "A different decision was already submitted for this proposal"
+                    )
+                return submitted.model_copy(deep=True)
+
             proposal = self._pending_proposals.get(request.proposal_id)
             if proposal is None:
                 raise LookupError("Pending proposal was not found")
@@ -279,7 +365,15 @@ class M3Runtime:
             await self.guild.record_decision(reviewer_decision)
             await streams.publish(TOPIC_RESOLUTIONS, reviewer_decision)
             self._pending_proposals.pop(request.proposal_id, None)
-            return ReviewerDecision.model_validate(reviewer_decision)
+            result = ReviewerDecision.model_validate(reviewer_decision)
+            self._submitted_decision_requests[proposal.proposal_id] = (
+                request.model_copy(deep=True)
+            )
+            self._submitted_decisions[proposal.proposal_id] = result.model_copy(
+                deep=True
+            )
+            self._decision_history[proposal.alert_id] = result
+            return result
 
     def _require_streams(self) -> IggyClient:
         if not self.started or self.streams is None:
@@ -429,6 +523,9 @@ class M3Runtime:
                 )
                 continue
             self._processed_proposal_ids.add(decision.proposal_id)
+            proposal = self._proposal_history.get(decision.proposal_id)
+            if proposal is not None:
+                self._decision_history[proposal.alert_id] = decision
             await self.events.broadcast("decision", decision)
             try:
                 await self._process_decision(decision)
@@ -652,7 +749,13 @@ class M3Runtime:
                 )
                 continue
             self._broadcast_resolution_ids.add(resolution.incident_id)
+            self._resolution_history[resolution.alert_id] = resolution
             await self.events.broadcast("resolution", resolution)
+            if resolution.alert_id in self._bridge_history:
+                await self.events.broadcast(
+                    "bridge_report",
+                    self.get_bridge_report(resolution.alert_id),
+                )
 
 
 @asynccontextmanager
@@ -674,9 +777,7 @@ async def dashboard() -> FileResponse:
     return FileResponse(INDEX_PATH, media_type="text/html")
 
 
-@app.get("/health")
-async def health(request: Request) -> dict[str, str | bool]:
-    runtime: M3Runtime = request.app.state.runtime
+def _sponsor_health(runtime: M3Runtime) -> dict[str, str | bool]:
     if not runtime.started:
         raise HTTPException(status_code=503, detail="M3 runtime is not connected")
     result: dict[str, str | bool] = {"status": "ok"}
@@ -687,6 +788,57 @@ async def health(request: Request) -> dict[str, str | bool]:
             guild_qualifying=guild.qualifying,
         )
     return result
+
+
+@app.get("/health")
+async def health(request: Request) -> dict[str, str | bool]:
+    runtime: M3Runtime = request.app.state.runtime
+    return _sponsor_health(runtime)
+
+
+@app.get("/bridge/health")
+async def bridge_health(request: Request) -> dict[str, object]:
+    runtime: M3Runtime = request.app.state.runtime
+    return {
+        "sponsor_health": _sponsor_health(runtime),
+        **connector_status(),
+        "connector_dry_run": connector_dry_run(),
+    }
+
+
+@app.get("/bridge/slack/messages")
+async def bridge_slack_messages(
+    limit: int = Query(default=50, ge=1, le=200),
+) -> list[dict[str, str]]:
+    token = slack_token()
+    if not token:
+        raise HTTPException(status_code=503, detail="SLACK_TOKEN is not configured")
+    try:
+        return await fetch_slack_messages(token=token, limit=limit)
+    except SlackReadError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from None
+
+
+@app.post("/bridge/complaint", response_model=AlertAccepted)
+async def create_bridge_complaint(
+    payload: BridgeComplaintRequest,
+    request: Request,
+) -> AlertAccepted:
+    runtime: M3Runtime = request.app.state.runtime
+    try:
+        alert_id = await runtime.create_bridge_complaint(payload)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return AlertAccepted(alert_id=alert_id)
+
+
+@app.get("/bridge/report/{alert_id}", response_model=BridgeReport)
+async def bridge_report(alert_id: str, request: Request) -> BridgeReport:
+    runtime: M3Runtime = request.app.state.runtime
+    try:
+        return runtime.get_bridge_report(alert_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.get("/events")
@@ -726,3 +878,15 @@ async def submit_decision(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/demo", response_class=FileResponse, include_in_schema=False)
+async def demo_index() -> FileResponse:
+    return FileResponse(DEMO_DIST_PATH / "index.html", media_type="text/html")
+
+
+app.mount(
+    "/demo",
+    StaticFiles(directory=DEMO_DIST_PATH, html=True),
+    name="demo",
+)

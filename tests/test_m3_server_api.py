@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import unittest
 from unittest.mock import AsyncMock, patch
 
@@ -69,6 +70,32 @@ class M3ServerApiTests(unittest.TestCase):
         self.assertIn('id="graphEnabled"', response.text)
         self.assertIn('id="graphToggleState"', response.text)
         self.assertIn("FalkorDB", response.text)
+
+    def test_built_react_demo_and_assets(self) -> None:
+        for path in ("/demo", "/demo/"):
+            with self.subTest(path=path):
+                response = self.client.get(path, follow_redirects=False)
+                self.assertEqual(response.status_code, 200)
+                self.assertIn("runbook — Incident Command", response.text)
+                self.assertIn('<div id="root"></div>', response.text)
+
+        asset_paths = re.findall(
+            r'(?:src|href)="(/demo/assets/[^"]+)"',
+            response.text,
+        )
+        self.assertTrue(asset_paths)
+        for asset_path in asset_paths:
+            with self.subTest(asset_path=asset_path):
+                asset_response = self.client.get(asset_path)
+                self.assertEqual(asset_response.status_code, 200)
+                self.assertTrue(asset_response.content)
+
+    def test_bridge_route_is_not_handled_by_demo_static_files(self) -> None:
+        response = self.client.get("/bridge/health")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("application/json", response.headers["content-type"])
+        self.assertEqual(response.json()["sponsor_health"], {"status": "ok"})
 
     def test_alert_contract(self) -> None:
         response = self.client.post(

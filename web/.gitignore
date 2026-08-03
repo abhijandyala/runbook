@@ -1,0 +1,7 @@
+# Dependencies and local tooling output
+node_modules
+*.log
+*.local
+.DS_Store
+
+# web/dist is intentionally retained for the /demo deployment artifact.
