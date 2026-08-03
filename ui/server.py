@@ -24,11 +24,14 @@ from adapters import (
     assemble_bridge_report,
     complaint_to_alert,
     connector_dry_run,
+    connector_live_writes,
     connector_status,
+    execute_connector_writes,
     fetch_slack_messages,
+    live_writes_eligible,
     redact_complaint,
 )
-from adapters.config import slack_token
+from adapters.config import github_repository, slack_token
 from agents.diagnostician import diagnose
 from agents.remediator import enforce_action_policy, remediate
 from agents.reviewer import (
@@ -44,6 +47,8 @@ from contracts import (
     Alert,
     BridgeComplaintRequest,
     BridgeReport,
+    ConnectorActionResult,
+    ConnectorWriteResult,
     HypothesisSet,
     Resolution,
     ReviewerDecision,
@@ -95,6 +100,8 @@ class DecisionRequest(BaseModel):
     reviewer_note: str | None = None
     modified_action: ActionProposal | None = None
     typed_confirmation: str | None = None
+    execute_live_writes: bool = False
+    live_writes_confirmation: str | None = None
 
 
 @dataclass(frozen=True)
@@ -161,6 +168,7 @@ class M3Runtime:
         self._proposal_history: dict[str, ActionProposal] = {}
         self._decision_history: dict[str, ReviewerDecision] = {}
         self._resolution_history: dict[str, Resolution] = {}
+        self._connector_write_results: dict[str, ConnectorWriteResult] = {}
         self._bridge_history: dict[str, BridgeComplaintRequest] = {}
         self._pending_proposals: dict[str, ActionProposal] = {}
         self._owned_proposal_ids: set[str] = set()
@@ -321,7 +329,51 @@ class M3Runtime:
             proposal=proposal,
             decision=self._decision_history.get(alert_id),
             resolution=self._resolution_history.get(alert_id),
+            connector_writes=(
+                self._connector_write_results.get(proposal.proposal_id)
+                if proposal
+                else None
+            ),
             guild_mode=guild_mode,
+        )
+
+    async def _broadcast_connector_action(
+        self,
+        proposal: ActionProposal,
+        action: ConnectorActionResult,
+    ) -> None:
+        await self.events.broadcast(
+            "connector_action",
+            {
+                "proposal_id": proposal.proposal_id,
+                "alert_id": proposal.alert_id,
+                **action.model_dump(mode="json"),
+                "timestamp": _iso_now(),
+            },
+        )
+
+    async def _broadcast_connector_replay(
+        self,
+        proposal: ActionProposal,
+        result: ConnectorWriteResult,
+    ) -> None:
+        for action in result.actions:
+            await self._broadcast_connector_action(
+                proposal,
+                action.model_copy(update={"status": "replayed"}),
+            )
+
+    def _live_write_gate(
+        self,
+        request: DecisionRequest,
+        proposal: ActionProposal,
+    ) -> bool:
+        return (
+            request.decision == "approve"
+            and request.execute_live_writes is True
+            and request.live_writes_confirmation == proposal.alert_id
+            and proposal.alert_id in self._bridge_history
+            and live_writes_eligible()
         )
 
     async def submit_decision(
@@ -337,6 +389,10 @@ class M3Runtime:
                     raise ValueError(
                         "A different decision was already submitted for this proposal"
                     )
+                proposal = self._proposal_history.get(request.proposal_id)
+                writes = self._connector_write_results.get(request.proposal_id)
+                if proposal is not None and writes is not None:
+                    await self._broadcast_connector_replay(proposal, writes)
                 return submitted.model_copy(deep=True)
 
             proposal = self._pending_proposals.get(request.proposal_id)
@@ -363,6 +419,49 @@ class M3Runtime:
                 guild_task_id=proposal.guild_task_id,
             )
             await self.guild.record_decision(reviewer_decision)
+            if self._live_write_gate(request, proposal):
+                alert = self._alert_history.get(proposal.alert_id)
+                complaint = self._bridge_history.get(proposal.alert_id)
+                if alert is not None and complaint is not None:
+                    report = self.get_bridge_report(proposal.alert_id)
+                    try:
+                        write_result = await execute_connector_writes(
+                            alert=alert,
+                            complaint=complaint,
+                            proposal=proposal,
+                            previews=report.action_previews,
+                            on_action=lambda action: self._broadcast_connector_action(
+                                proposal,
+                                action,
+                            ),
+                        )
+                    except RuntimeError:
+                        logger.error(
+                            "Connector write workflow failed for proposal %s",
+                            proposal.proposal_id,
+                        )
+                        failed = ConnectorActionResult(
+                            connector="linear",
+                            operation="issueCreate",
+                            status="failed",
+                            error="Connector write workflow failed safely",
+                        )
+                        await self._broadcast_connector_action(proposal, failed)
+                        now = _iso_now()
+                        self._connector_write_results[proposal.proposal_id] = (
+                            ConnectorWriteResult(
+                                proposal_id=proposal.proposal_id,
+                                alert_id=proposal.alert_id,
+                                status="failed",
+                                actions=[failed],
+                                started_at=now,
+                                completed_at=now,
+                            )
+                        )
+                    else:
+                        self._connector_write_results[proposal.proposal_id] = (
+                            write_result.model_copy(deep=True)
+                        )
             await streams.publish(TOPIC_RESOLUTIONS, reviewer_decision)
             self._pending_proposals.pop(request.proposal_id, None)
             result = ReviewerDecision.model_validate(reviewer_decision)
@@ -799,10 +898,17 @@ async def health(request: Request) -> dict[str, str | bool]:
 @app.get("/bridge/health")
 async def bridge_health(request: Request) -> dict[str, object]:
     runtime: M3Runtime = request.app.state.runtime
+    live_writes_enabled = live_writes_eligible()
     return {
         "sponsor_health": _sponsor_health(runtime),
         **connector_status(),
         "connector_dry_run": connector_dry_run(),
+        "connector_live_writes": connector_live_writes(),
+        "live_writes_eligible": live_writes_enabled,
+        "connector_live_writes_enabled": live_writes_enabled,
+        "github_repo_allowed": (
+            github_repository() if live_writes_enabled else None
+        ),
     }
 
 

@@ -237,7 +237,7 @@ class ComplaintBridgeRouteTests(unittest.TestCase):
         self.assertEqual(alert.alert_id, first.json()["alert_id"])
         self.assertIn(alert.alert_id, runtime._owned_alerts)
 
-    def test_health_discloses_configuration_without_values(self) -> None:
+    def test_health_discloses_dry_run_as_ineligible_without_values(self) -> None:
         runtime = M3Runtime()
         runtime.started = True
         app.state.runtime = runtime
@@ -246,8 +246,9 @@ class ComplaintBridgeRouteTests(unittest.TestCase):
             "LINEAR_TOKEN": "linear-health-secret",
             "LINEAR_TEAM_ID": "TEAM",
             "GITHUB_TOKEN": "github-health-secret",
-            "GITHUB_REPO": "example/repo",
+            "GITHUB_REPO": "abhijandyala/testing24",
             "CONNECTOR_DRY_RUN": "true",
+            "CONNECTOR_LIVE_WRITES": "true",
         }
         with patch.dict(os.environ, env):
             response = TestClient(app).get("/bridge/health")
@@ -258,9 +259,44 @@ class ComplaintBridgeRouteTests(unittest.TestCase):
         self.assertTrue(body["linear_configured"])
         self.assertTrue(body["github_configured"])
         self.assertTrue(body["connector_dry_run"])
+        self.assertTrue(body["connector_live_writes"])
+        self.assertFalse(body["live_writes_eligible"])
+        self.assertFalse(body["connector_live_writes_enabled"])
+        self.assertIsNone(body["github_repo_allowed"])
         serialized = json.dumps(body)
         self.assertNotIn("health-secret", serialized)
         self.assertIn("sponsor_health", body)
+
+    def test_health_discloses_allowed_repo_only_when_live_writes_eligible(
+        self,
+    ) -> None:
+        runtime = M3Runtime()
+        runtime.started = True
+        app.state.runtime = runtime
+        env = {
+            "SLACK_TOKEN": "slack-health-secret",
+            "LINEAR_TOKEN": "linear-health-secret",
+            "LINEAR_TEAM_ID": "TEAM",
+            "GITHUB_TOKEN": "github-health-secret",
+            "GITHUB_REPO": "abhijandyala/testing24",
+            "CONNECTOR_DRY_RUN": "false",
+            "CONNECTOR_LIVE_WRITES": "true",
+        }
+        with patch.dict(os.environ, env):
+            response = TestClient(app).get("/bridge/health")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertFalse(body["connector_dry_run"])
+        self.assertTrue(body["connector_live_writes"])
+        self.assertTrue(body["live_writes_eligible"])
+        self.assertTrue(body["connector_live_writes_enabled"])
+        self.assertEqual(
+            body["github_repo_allowed"],
+            "abhijandyala/testing24",
+        )
+        serialized = json.dumps(body)
+        self.assertNotIn("health-secret", serialized)
 
 
 class BridgeReportTests(unittest.TestCase):
@@ -502,6 +538,29 @@ class FrontendRenderingSafetyTests(unittest.TestCase):
         self.assertNotIn("dangerouslySetInnerHTML", sources)
         self.assertNotRegex(sources, re.compile(r"\binnerHTML\s*="))
         self.assertIn("redactSecretsDeep", api_source)
+
+    def test_slack_complaint_preserves_reply_correlation_fields(self) -> None:
+        store_source = (
+            Path(__file__).parents[1] / "web" / "src" / "store.tsx"
+        ).read_text(encoding="utf-8")
+        run_message = re.search(
+            r"const runMessage = useCallback\("
+            r".*?await submitComplaint\(\s*\{(?P<payload>.*?)\}\s*,"
+            r"\s*(?P<selected_message_id>.*?)\s*\);",
+            store_source,
+            re.DOTALL,
+        )
+
+        self.assertIsNotNone(run_message)
+        assert run_message is not None
+        payload = run_message.group("payload")
+        self.assertRegex(
+            payload,
+            r"\bexternal_id:\s*message\.ts\s*\?\?\s*message\.id\s*,",
+        )
+        self.assertRegex(payload, r"\bchannel:\s*message\.channel\s*,")
+        self.assertNotIn("channel_name", payload)
+        self.assertEqual(run_message.group("selected_message_id").strip(), "message.id")
 
 
 if __name__ == "__main__":

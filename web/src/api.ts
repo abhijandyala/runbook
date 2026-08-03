@@ -113,6 +113,8 @@ export interface DecisionRequest {
   reviewer_note?: string;
   modified_action?: ActionProposal;
   typed_confirmation?: string;
+  execute_live_writes?: boolean;
+  live_writes_confirmation?: string;
 }
 
 export function postDecision(payload: DecisionRequest) {
@@ -134,7 +136,8 @@ const EVENT_NAMES: RunbookEventName[] = [
   "action",
   "outcome",
   "resolution",
-  "bridge_report"
+  "bridge_report",
+  "connector_action"
 ];
 
 export function subscribeEvents(

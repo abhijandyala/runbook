@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b --pretty false",
     "lint": "oxlint src vite.config.ts",
+    "safety:check": "node scripts/check-static-safety.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

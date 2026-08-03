@@ -9,25 +9,41 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+LIVE_WRITE_REPOSITORY = "abhijandyala/testing24"
+
 
 def _value(name: str) -> str:
     return (os.getenv(name) or "").strip()
 
 
-def connector_dry_run() -> bool:
-    raw = _value("CONNECTOR_DRY_RUN")
+def _boolean(name: str, *, default: bool) -> bool:
+    raw = _value(name)
     if not raw:
-        return True
+        return default
     normalized = raw.lower()
     if normalized in {"1", "true", "yes", "on"}:
         return True
     if normalized in {"0", "false", "no", "off"}:
         return False
-    raise RuntimeError("CONNECTOR_DRY_RUN must be true/false, yes/no, on/off, or 1/0")
+    raise RuntimeError(
+        f"{name} must be true/false, yes/no, on/off, or 1/0"
+    )
+
+
+def connector_dry_run() -> bool:
+    return _boolean("CONNECTOR_DRY_RUN", default=True)
+
+
+def connector_live_writes() -> bool:
+    return _boolean("CONNECTOR_LIVE_WRITES", default=False)
 
 
 def slack_token() -> str:
     return _value("SLACK_TOKEN")
+
+
+def linear_token() -> str:
+    return _value("LINEAR_TOKEN")
 
 
 def linear_team_id() -> str:
@@ -56,13 +72,30 @@ def github_repository() -> str | None:
     return validate_github_repository(_value("GITHUB_REPO"))
 
 
+def github_token() -> str:
+    return _value("GITHUB_TOKEN")
+
+
 def github_base_branch() -> str:
     return _value("GITHUB_BASE_BRANCH") or "main"
+
+
+def live_writes_environment_enabled() -> bool:
+    return not connector_dry_run() and connector_live_writes()
+
+
+def live_writes_eligible() -> bool:
+    status = connector_status()
+    return (
+        live_writes_environment_enabled()
+        and all(status.values())
+        and github_repository() == LIVE_WRITE_REPOSITORY
+    )
 
 
 def connector_status() -> dict[str, bool]:
     return {
         "slack_configured": bool(slack_token()),
-        "linear_configured": bool(_value("LINEAR_TOKEN") and linear_team_id()),
-        "github_configured": bool(_value("GITHUB_TOKEN") and github_repository()),
+        "linear_configured": bool(linear_token() and linear_team_id()),
+        "github_configured": bool(github_token() and github_repository()),
     }

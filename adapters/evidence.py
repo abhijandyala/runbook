@@ -21,6 +21,7 @@ from contracts import (
     BridgeActionPreviews,
     BridgeComplaintRequest,
     BridgeReport,
+    ConnectorWriteResult,
     EvidenceBrief,
     HypothesisSet,
     Resolution,
@@ -33,7 +34,7 @@ SPONSOR_BOUNDARIES = {
     "RocketRide": "Owns all runbook inference; no provider is called directly.",
     "Guild.ai": "Owns agent handoff and the human-review boundary.",
     "Complaint Bridge": (
-        "Reads Slack and assembles previews; connector writes are not implemented."
+        "Writes require explicit environment opt-in and alert-ID confirmation."
     ),
 }
 
@@ -68,6 +69,7 @@ def assemble_bridge_report(
     proposal: ActionProposal | None,
     decision: ReviewerDecision | None,
     resolution: Resolution | None,
+    connector_writes: ConnectorWriteResult | None = None,
     guild_mode: str,
 ) -> BridgeReport:
     status = connector_status()
@@ -136,6 +138,9 @@ def assemble_bridge_report(
         decision=decision.model_copy(deep=True) if decision else None,
         resolution=resolution.model_copy(deep=True) if resolution else None,
         action_previews=previews,
+        connector_writes=(
+            connector_writes.model_copy(deep=True) if connector_writes else None
+        ),
         evidence_brief=brief,
         sponsor_boundaries=dict(SPONSOR_BOUNDARIES),
         guild_mode=guild_mode,

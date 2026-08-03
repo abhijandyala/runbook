@@ -6,7 +6,7 @@ from typing import Any
 
 import httpx
 
-from adapters.redaction import redact_text
+from adapters.redaction import redact_secrets, redact_text
 
 SLACK_API = "https://slack.com/api"
 SKIPPABLE_HISTORY_ERRORS = frozenset(
@@ -16,6 +16,59 @@ SKIPPABLE_HISTORY_ERRORS = frozenset(
 
 class SlackReadError(RuntimeError):
     """A sanitized Slack read failure that never includes credentials."""
+
+
+class SlackWriteError(RuntimeError):
+    """A sanitized Slack write failure that never includes credentials."""
+
+
+async def post_completion_reply(
+    *,
+    token: str,
+    channel: str | None,
+    thread_ts: str | None,
+    linear_url: str,
+    github_url: str,
+    client: httpx.AsyncClient,
+) -> dict[str, str]:
+    """Post one completion reply to the complaint's originating thread."""
+
+    if not token:
+        raise SlackWriteError("Slack connector is not configured")
+    if not channel or not thread_ts:
+        raise SlackWriteError(
+            "Slack reply requires originating channel and thread_ts correlation"
+        )
+    text = (
+        "Complaint Bridge remediation is complete and ready for human review. "
+        f"Linear: {linear_url} Draft PR: {github_url}"
+    )
+    try:
+        response = await client.post(
+            f"{SLACK_API}/chat.postMessage",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json; charset=utf-8",
+            },
+            json={
+                "channel": channel,
+                "thread_ts": thread_ts,
+                "text": text,
+                "unfurl_links": False,
+            },
+        )
+        response.raise_for_status()
+        body = response.json()
+    except (httpx.HTTPError, ValueError):
+        raise SlackWriteError("Slack chat.postMessage request failed") from None
+    if not isinstance(body, dict) or body.get("ok") is not True:
+        error = body.get("error", "unknown_error") if isinstance(body, dict) else ""
+        raise SlackWriteError(
+            f"Slack chat.postMessage failed: {redact_secrets(str(error), token)}"
+        )
+    if not body.get("ts"):
+        raise SlackWriteError("Slack chat.postMessage response omitted ts")
+    return {"ts": redact_secrets(str(body["ts"]), token)}
 
 
 def _payload(

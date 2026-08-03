@@ -24,6 +24,7 @@ import type {
   Alert,
   BridgeHealth,
   BridgeReport,
+  ConnectorAction,
   HypothesisSet,
   LoadState,
   OutcomeEvent,
@@ -48,6 +49,7 @@ interface RunbookState {
   proposals: ActionProposal[];
   decisions: ReviewerDecision[];
   actions: ActionEvent[];
+  connectorActions: ConnectorAction[];
   outcomes: OutcomeEvent[];
   resolutions: Resolution[];
   reports: Record<string, BridgeReport>;
@@ -78,6 +80,7 @@ const initialState: RunbookState = {
   proposals: [],
   decisions: [],
   actions: [],
+  connectorActions: [],
   outcomes: [],
   resolutions: [],
   reports: {},
@@ -95,12 +98,18 @@ function messageError(error: unknown): string {
 
 function eventId(name: string, payload: RunbookEventPayload): string {
   const record = payload as unknown as Record<string, unknown>;
-  return `${name}-${String(record.proposal_id ?? record.alert_id ?? record.incident_id ?? Date.now())}-${Date.now()}`;
+  return `${name}-${String(record.idempotency_key ?? record.proposal_id ?? record.alert_id ?? record.incident_id ?? Date.now())}-${Date.now()}`;
 }
 
 function eventTime(payload: RunbookEventPayload): string {
   const record = payload as unknown as Record<string, unknown>;
-  return String(record.timestamp ?? record.generated_at ?? record.fired_at ?? new Date().toISOString());
+  return String(
+    record.posted_at ??
+      record.timestamp ??
+      record.generated_at ??
+      record.fired_at ??
+      new Date().toISOString()
+  );
 }
 
 function upsert<T>(items: T[], next: T, key: (item: T) => string): T[] {
@@ -188,6 +197,8 @@ export function RunbookProvider({ children }: { children: ReactNode }) {
           next.proposals = current.proposals.filter(
             (proposal) => proposal.proposal_id !== decision.proposal_id
           );
+          next.decisionBusy =
+            current.decisionBusy === decision.proposal_id ? null : current.decisionBusy;
           next.running = decision.decision !== "reject";
           break;
         }
@@ -213,6 +224,12 @@ export function RunbookProvider({ children }: { children: ReactNode }) {
           if (report.alert_id) next.reports = { ...current.reports, [report.alert_id]: report };
           break;
         }
+        case "connector_action":
+          next.connectorActions = [
+            ...current.connectorActions,
+            payload as ConnectorAction
+          ].slice(-100);
+          break;
       }
       return next;
     });
@@ -269,8 +286,8 @@ export function RunbookProvider({ children }: { children: ReactNode }) {
       await submitComplaint(
         {
           text: message.text,
-          external_id: message.id,
-          channel: message.channel_name ?? message.channel,
+          external_id: message.ts ?? message.id,
+          channel: message.channel,
         },
         message.id
       );
@@ -301,15 +318,7 @@ export function RunbookProvider({ children }: { children: ReactNode }) {
   const decideProposal = useCallback(async (request: DecisionRequest) => {
     setState((current) => ({ ...current, decisionBusy: request.proposal_id, error: null }));
     try {
-      const decision = (await postDecision(request)) as ReviewerDecision;
-      setState((current) => ({
-        ...current,
-        decisionBusy: null,
-        proposals: current.proposals.filter(
-          (proposal) => proposal.proposal_id !== request.proposal_id
-        ),
-        decisions: upsert(current.decisions, decision, (item) => item.proposal_id)
-      }));
+      await postDecision(request);
     } catch (error) {
       setState((current) => ({
         ...current,

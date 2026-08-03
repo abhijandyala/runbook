@@ -159,6 +159,33 @@ class BridgeActionPreviews(Contract):
     slack_reply: SlackReplyPreview
 
 
+class ConnectorActionResult(Contract):
+    """Credential-free state for one ordered connector operation."""
+
+    connector: Literal["linear", "github", "slack"]
+    operation: Literal["issueCreate", "draftPullRequest", "chat.postMessage"]
+    status: Literal["pending", "running", "succeeded", "failed", "replayed"]
+    resource_id: str | None = None
+    identifier: str | None = None
+    url: str | None = None
+    error: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ConnectorWriteResult(Contract):
+    """Proposal-scoped result retained across partial connector failures."""
+
+    proposal_id: str
+    alert_id: str
+    status: Literal["succeeded", "partial", "failed"]
+    actions: list[ConnectorActionResult] = Field(default_factory=list)
+    linear_issue_url: str | None = None
+    github_pull_request_url: str | None = None
+    slack_message_ts: str | None = None
+    started_at: str
+    completed_at: str
+
+
 class EvidenceBrief(Contract):
     alert_id: str
     summary: str
@@ -187,6 +214,10 @@ class BridgeReport(Contract):
     decision: ReviewerDecision | None = None
     resolution: Resolution | None = None
     action_previews: BridgeActionPreviews
+    connector_writes: ConnectorWriteResult | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+    )
     evidence_brief: EvidenceBrief
     sponsor_boundaries: dict[str, str]
     guild_mode: str

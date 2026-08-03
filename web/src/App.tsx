@@ -5,6 +5,8 @@ import type {
   Alert,
   BridgeHealth,
   BridgeReport,
+  ConnectorAction,
+  ConnectorActionStatus,
   HypothesisSet,
   Resolution,
   SlackMessage,
@@ -12,6 +14,7 @@ import type {
 } from "./contracts";
 import { useRunbook } from "./store";
 import { GitHubBrand, LinearBrand, NavIcon, RunbookMark, SlackBrand } from "./icons";
+import { redactSecrets } from "./redaction";
 
 const NAV: { id: Tab; label: string }[] = [
   { id: "dashboard", label: "Dashboard" },
@@ -62,6 +65,24 @@ function healthFlag(health: BridgeHealth | null, name: string): boolean | null {
   if (typeof nested === "boolean") return nested;
   if (typeof nested === "string") return ["connected", "configured", "ok", "ready"].includes(nested.toLowerCase());
   return null;
+}
+
+function liveWritesEnabled(health: BridgeHealth | null): boolean {
+  return health?.connector_live_writes_enabled === true;
+}
+
+function safeExternalUrl(raw?: string | null): string | null {
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+function privateText(value: string): string {
+  return redactSecrets(value);
 }
 
 function compactTime(raw?: string): string {
@@ -144,11 +165,25 @@ function TopBar({ active }: { active: Tab }) {
         <span className="crumb">Runbook Incident Command</span>
       </div>
       <div className="top-status">
-        <Badge tone="warn">DRY RUN</Badge>
         <span className={`status-dot ${streamConnected ? "online" : "offline"}`} />
         {running ? "Pipeline active" : streamConnected ? "Event stream connected" : "Event stream offline"}
       </div>
     </header>
+  );
+}
+
+function WriteModeBanner() {
+  const { health } = useRunbook();
+  const live = liveWritesEnabled(health);
+  return (
+    <div className={`write-mode-banner ${live ? "live" : "dry"}`} role={live ? "alert" : "status"}>
+      <strong>{live ? "LIVE WRITES ENABLED" : "DRY RUN"}</strong>
+      <span>
+        {live
+          ? "Approvals can create Linear, GitHub, and Slack records. Verify every target before approving."
+          : "Connector actions are simulated. No external connector write is authorized."}
+      </span>
+    </div>
   );
 }
 
@@ -238,8 +273,10 @@ function AgentPipeline() {
     proposals,
     decisions,
     actions,
+    connectorActions,
     resolutions,
-    running
+    running,
+    health
   } = useRunbook();
   const proposal = proposals.find((item) => item.alert_id === selectedAlertId);
   const knownProposalIds = new Set(
@@ -249,6 +286,9 @@ function AgentPipeline() {
   if (resolution?.reviewer_decision.proposal_id) knownProposalIds.add(resolution.reviewer_decision.proposal_id);
   const hasDecision = decisions.some((item) => knownProposalIds.has(item.proposal_id)) || Boolean(resolution);
   const hasAction = actions.some((item) => item.alert_id === selectedAlertId);
+  const hasConnectorAction = connectorActions.some(
+    (item) => !item.alert_id || item.alert_id === selectedAlertId
+  );
   const hasAlert = alerts.some((item) => item.alert_id === selectedAlertId);
   const hasHypotheses = hypotheses.some((item) => item.alert_id === selectedAlertId);
 
@@ -257,8 +297,12 @@ function AgentPipeline() {
     { title: "Diagnostician", detail: "Evidence + hypotheses", status: hasHypotheses ? "done" : hasAlert ? "active" : "waiting" },
     { title: "Remediator", detail: "Safe proposal", status: proposal || hasDecision ? "done" : hasHypotheses ? "active" : "waiting" },
     { title: "Human gate", detail: proposal ? "Approval required" : "Reviewer decision", status: hasDecision ? "done" : proposal ? "active" : "waiting" },
-    { title: "Action preview", detail: "SIMULATED only", status: hasAction ? "done" : hasDecision ? "active" : "waiting" },
-    { title: "FalkorDB memory", detail: "Final incident ID", status: resolution ? "done" : hasAction ? "active" : "waiting" }
+    {
+      title: liveWritesEnabled(health) ? "Connector writes" : "Action preview",
+      detail: liveWritesEnabled(health) ? "SSE / report status only" : "SIMULATED only",
+      status: hasAction || hasConnectorAction ? "done" : hasDecision ? "active" : "waiting"
+    },
+    { title: "FalkorDB memory", detail: "Final incident ID", status: resolution ? "done" : hasAction || hasConnectorAction ? "active" : "waiting" }
   ];
 
   return (
@@ -335,11 +379,12 @@ function previewDetail(preview: ActionPreview): string {
 }
 
 function EvidenceAndPreviews() {
-  const { selectedAlertId, reports, hypotheses } = useRunbook();
+  const { selectedAlertId, reports, hypotheses, health } = useRunbook();
   const report = selectedAlertId ? reports[selectedAlertId] : undefined;
   const hypothesisSet = hypotheses.find((item) => item.alert_id === selectedAlertId);
   const previews = collectPreviews(report);
   const evidenceCount = hypothesisSet?.hypotheses.reduce((sum, hypothesis) => sum + hypothesis.evidence.length, 0) ?? 0;
+  const live = liveWritesEnabled(health);
   return (
     <div className="evidence-preview-grid">
       <section className="card">
@@ -358,13 +403,19 @@ function EvidenceAndPreviews() {
         </div>
       </section>
       <section className="card">
-        <div className="card-head"><div><h2>Action previews</h2><p>No external write is represented as completed</p></div><Badge tone="warn">DRY RUN</Badge></div>
+        <div className="card-head">
+          <div>
+            <h2>{live ? "Connector targets" : "Action previews"}</h2>
+            <p>Completion is shown only from connector SSE or a bridge report</p>
+          </div>
+          <Badge tone={live ? "bad" : "warn"}>{live ? "LIVE TARGETS" : "DRY RUN"}</Badge>
+        </div>
         <div className="preview-list">
           {previews.map((preview, index) => (
             <div className="preview-row" key={`${preview.provider}-${index}`}>
               <span className="integration-icon small"><PreviewIcon provider={preview.provider} /></span>
               <div><strong>{preview.title ?? `${preview.provider} preview`}</strong><span>{previewDetail(preview)}</span></div>
-              <Badge tone="warn">NOT SENT</Badge>
+              <Badge tone={live ? "bad" : "warn"}>{live ? "NOT CONFIRMED" : "NOT SENT"}</Badge>
             </div>
           ))}
           {previews.length === 0 && <Empty title="No action previews" detail="Linear, GitHub, and Slack previews appear only when supplied by GET /bridge/report/{alert_id}." />}
@@ -374,13 +425,135 @@ function EvidenceAndPreviews() {
   );
 }
 
+function connectorActionFingerprint(action: ConnectorAction): string {
+  return `${action.idempotency_key}-${action.connector}-${action.operation}-${action.status}`;
+}
+
+function connectorActionKey(action: ConnectorAction, index: number): string {
+  return `${connectorActionFingerprint(action)}-${index}`;
+}
+
+function connectorStatusTone(status: ConnectorActionStatus): "neutral" | "good" | "warn" | "bad" | "purple" {
+  if (status === "succeeded") return "good";
+  if (status === "failed") return "bad";
+  if (status === "pending" || status === "running") return "warn";
+  if (status === "replayed") return "purple";
+  return "neutral";
+}
+
+function connectorActionLabel(action: ConnectorAction): string {
+  const operation = action.operation.toLowerCase();
+  if (action.status === "failed") return `${action.connector} operation failed`;
+  if (action.status === "skipped") return `${action.connector} operation skipped`;
+  if (action.status === "replayed") return `${action.connector} operation replayed`;
+  const complete = action.status === "succeeded";
+  if (action.connector === "linear") return complete ? "Linear issue created" : "Creating Linear issue";
+  if (action.connector === "slack") return complete ? "Slack message posted" : "Posting Slack message";
+  if (operation.includes("branch") || operation.includes("push")) {
+    return complete ? "GitHub branch pushed" : "Pushing GitHub branch";
+  }
+  if (operation.includes("pr") || operation.includes("pull")) {
+    return complete ? "GitHub pull request opened" : "Opening GitHub pull request";
+  }
+  return complete ? "GitHub operation completed" : "Running GitHub operation";
+}
+
+function ConnectorActionRow({ action, index }: { action: ConnectorAction; index: number }) {
+  const url = safeExternalUrl(action.url);
+  const reference = action.identifier ?? action.branch;
+  return (
+    <div className={`connector-action-row status-${action.status}`}>
+      <span className="integration-icon small"><PreviewIcon provider={action.connector} /></span>
+      <div className="connector-action-copy">
+        <strong>{connectorActionLabel(action)}</strong>
+        <span>
+          {reference ? privateText(reference) : privateText(action.operation)}
+          {action.connector === "slack" && action.posted_at ? ` · ${compactTime(action.posted_at)}` : ""}
+        </span>
+        {action.status === "failed" && action.error ? (
+          <small>{privateText(action.error)}</small>
+        ) : null}
+        <code title={privateText(action.idempotency_key ?? "Idempotency key not reported")}>
+          {privateText(action.idempotency_key ?? "Idempotency key not reported")}
+        </code>
+      </div>
+      <div className="connector-action-state">
+        <Badge tone={connectorStatusTone(action.status)}>{action.status}</Badge>
+        {action.dry_run === true ? (
+          <Badge tone="warn">DRY RUN</Badge>
+        ) : action.dry_run === false ? (
+          <Badge tone="bad">LIVE</Badge>
+        ) : (
+          <Badge>MODE UNKNOWN</Badge>
+        )}
+        {url ? (
+          <a href={url} target="_blank" rel="noopener noreferrer" aria-label={`Open ${action.connector} result ${index + 1}`}>
+            Open ↗
+          </a>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function ConnectorActivity() {
+  const { connectorActions, selectedAlertId, reports } = useRunbook();
+  const report = selectedAlertId ? reports[selectedAlertId] : undefined;
+  const reportActions = Array.isArray(report?.connector_writes?.actions)
+    ? report.connector_writes.actions
+    : [];
+  const seen = new Set(connectorActions.map(connectorActionFingerprint));
+  const actions = [
+    ...connectorActions,
+    ...reportActions.filter((action) => {
+      const key = connectorActionFingerprint(action);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+  ];
+  const connectorWrites = report?.connector_writes;
+  const rollup = connectorWrites?.rollup ?? connectorWrites;
+  const rollupStatus = String(rollup?.status ?? "").toLowerCase();
+  const partial = rollup?.partial === true || rollupStatus.includes("partial") ||
+    (Number(rollup?.succeeded ?? 0) > 0 && Number(rollup?.failed ?? 0) > 0);
+
+  return (
+    <section className="card connector-activity">
+      <div className="card-head">
+        <div>
+          <h2>Connector write activity</h2>
+          <p>Ordered events from connector_action SSE and authoritative bridge reports</p>
+        </div>
+        <div className="head-actions">
+          {partial ? <Badge tone="bad">PARTIAL</Badge> : null}
+          {rollupStatus ? <Badge tone={rollupStatus.includes("fail") ? "bad" : "neutral"}>{privateText(rollupStatus)}</Badge> : null}
+          <Badge>{actions.length} EVENTS</Badge>
+        </div>
+      </div>
+      <div className="connector-action-list" aria-live="polite">
+        {actions.map((action, index) => (
+          <ConnectorActionRow key={connectorActionKey(action, index)} action={action} index={index} />
+        ))}
+        {actions.length === 0 ? (
+          <Empty
+            title="No connector activity observed"
+            detail="A decision response alone never marks a write successful. Waiting for connector_action SSE or connector_writes report data."
+          />
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
 function Dashboard() {
-  const { alerts, hypotheses, proposals, resolutions } = useRunbook();
+  const { alerts, hypotheses, proposals, resolutions, health } = useRunbook();
+  const live = liveWritesEnabled(health);
   return (
     <div className="page">
       <ErrorBanner />
       <div className="hero-row">
-        <div><span className="eyebrow">TESTTEAM · INCIDENT OPERATIONS</span><h2>Turn support signals into reviewed runbook decisions.</h2><p>Live bridge data in a fake company shell. Every production-facing action stays visibly simulated.</p></div>
+        <div><span className="eyebrow">TESTTEAM · INCIDENT OPERATIONS</span><h2>Turn support signals into reviewed runbook decisions.</h2><p>{live ? "Live connector writes require an explicit per-alert confirmation at the human gate." : "Connector actions remain simulated while the bridge reports dry-run mode."}</p></div>
         <div className="stat-strip">
           <span><strong>{alerts.length}</strong><small>Alerts</small></span>
           <span><strong>{hypotheses.length}</strong><small>Diagnoses</small></span>
@@ -392,6 +565,7 @@ function Dashboard() {
       <ManualComplaint />
       <AgentPipeline />
       <EvidenceAndPreviews />
+      <ConnectorActivity />
     </div>
   );
 }
@@ -462,19 +636,57 @@ function Inbox() {
   );
 }
 
+function connectorTargets(
+  proposal: ActionProposal,
+  report: BridgeReport | undefined,
+  health: BridgeHealth | null
+): { connector: "linear" | "github" | "slack"; target: string }[] {
+  const previews = collectPreviews(report);
+  const previewTarget = (connector: string) =>
+    previews.find((preview) => preview.provider.toLowerCase().includes(connector))?.target;
+  return [
+    {
+      connector: "linear",
+      target: previewTarget("linear") ?? "Configured Linear workspace"
+    },
+    {
+      connector: "github",
+      target:
+        health?.github_repo_allowed ??
+        previewTarget("github") ??
+        "No allowed GitHub repository reported"
+    },
+    {
+      connector: "slack",
+      target: previewTarget("slack") ?? `Configured Slack destination for ${proposal.alert_id}`
+    }
+  ];
+}
+
 function ApprovalCard({ proposal }: { proposal: ActionProposal }) {
-  const { decideProposal, decisionBusy } = useRunbook();
+  const { decideProposal, decisionBusy, health, reports } = useRunbook();
   const [note, setNote] = useState("");
-  const [confirmation, setConfirmation] = useState("");
+  const [destructiveConfirmation, setDestructiveConfirmation] = useState("");
+  const [liveConfirmation, setLiveConfirmation] = useState("");
+  const [liveIntent, setLiveIntent] = useState(false);
   const destructive = proposal.safety_class === "destructive";
+  const live = liveWritesEnabled(health);
   const busy = decisionBusy === proposal.proposal_id;
-  const approveDisabled = busy || (destructive && confirmation !== proposal.action_target);
+  const targets = connectorTargets(proposal, reports[proposal.alert_id], health);
+  const approveDisabled =
+    busy ||
+    (destructive && destructiveConfirmation !== proposal.action_target) ||
+    (live && (!liveIntent || liveConfirmation !== proposal.alert_id));
   const decide = (decision: "approve" | "reject") => {
+    const approveLive = decision === "approve" && live;
     void decideProposal({
       proposal_id: proposal.proposal_id,
       decision,
       reviewer_note: note.trim() || undefined,
-      typed_confirmation: decision === "approve" && destructive ? confirmation : undefined
+      typed_confirmation:
+        decision === "approve" && destructive ? destructiveConfirmation : undefined,
+      execute_live_writes: approveLive ? true : undefined,
+      live_writes_confirmation: approveLive ? liveConfirmation : undefined
     }).catch(() => undefined);
   };
   return (
@@ -489,20 +701,52 @@ function ApprovalCard({ proposal }: { proposal: ActionProposal }) {
         <div className="proposal-meta">
           <span><small>Runbook source</small><strong>{proposal.runbook_source}</strong></span>
           <span><small>Remediator confidence</small><strong>{Math.round(proposal.remediator_confidence * 100)}%</strong></span>
-          <span><small>Execution boundary</small><strong>SIMULATED / DRY RUN</strong></span>
+          <span><small>Execution boundary</small><strong>{live ? "LIVE CONNECTOR WRITES" : "SIMULATED / DRY RUN"}</strong></span>
           <span><small>Guild task</small><strong>{proposal.guild_task_id ?? "Not provided"}</strong></span>
         </div>
         <label className="field-label">Reviewer note <span>optional</span><textarea value={note} onChange={(event) => setNote(event.target.value)} rows={2} placeholder="Document the reason for this decision…" /></label>
         {destructive && (
           <label className="field-label destructive-confirm">
             Type <code>{proposal.action_target}</code> to approve
-            <input value={confirmation} onChange={(event) => setConfirmation(event.target.value)} autoComplete="off" />
+            <input value={destructiveConfirmation} onChange={(event) => setDestructiveConfirmation(event.target.value)} autoComplete="off" />
             <small>Exact typed confirmation is required by the existing decision contract.</small>
           </label>
         )}
+        {live ? (
+          <div className="live-approval-confirm">
+            <strong>Live connector targets</strong>
+            <p>These systems may be changed after approval. Message bodies remain hidden here.</p>
+            <div className="live-target-list">
+              {targets.map((target) => (
+                <div key={target.connector}>
+                  <span className="integration-icon small"><PreviewIcon provider={target.connector} /></span>
+                  <span><strong>{target.connector}</strong><small>{privateText(target.target)}</small></span>
+                </div>
+              ))}
+            </div>
+            <label className="intent-check">
+              <input
+                type="checkbox"
+                checked={liveIntent}
+                onChange={(event) => setLiveIntent(event.target.checked)}
+              />
+              <span>I intend to execute live writes against these connector targets.</span>
+            </label>
+            <label className="field-label">
+              Type alert ID <code>{proposal.alert_id}</code> exactly
+              <input
+                value={liveConfirmation}
+                onChange={(event) => setLiveConfirmation(event.target.value)}
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <small>Both intent and exact alert ID confirmation are required.</small>
+            </label>
+          </div>
+        ) : null}
         <div className="approval-buttons">
           <button className="button ghost" disabled={busy} onClick={() => decide("reject")}>{busy ? "Submitting…" : "Reject"}</button>
-          <button className="button primary" disabled={approveDisabled} onClick={() => decide("approve")}>{busy ? "Submitting…" : "Approve dry run"}</button>
+          <button className={`button ${live ? "danger" : "primary"}`} disabled={approveDisabled} onClick={() => decide("approve")}>{busy ? "Submitting…" : live ? "Approve live writes" : "Approve dry run"}</button>
         </div>
       </div>
     </section>
@@ -510,11 +754,12 @@ function ApprovalCard({ proposal }: { proposal: ActionProposal }) {
 }
 
 function Approvals() {
-  const { proposals, decisions } = useRunbook();
+  const { proposals, decisions, health } = useRunbook();
+  const live = liveWritesEnabled(health);
   return (
     <div className="page narrow">
       <ErrorBanner />
-      <div className="section-intro"><div><span className="eyebrow">HUMAN-IN-THE-LOOP</span><h2>Pending approvals</h2><p>Approve or reject the backend's exact proposal contract. Approval permits only the runtime's simulated action path.</p></div><Badge tone="warn">{proposals.length} WAITING</Badge></div>
+      <div className="section-intro"><div><span className="eyebrow">HUMAN-IN-THE-LOOP</span><h2>Pending approvals</h2><p>{live ? "Live approval requires explicit intent and the exact alert ID for every proposal." : "Approval retains the runtime's simulated connector path."}</p></div><Badge tone={live ? "bad" : "warn"}>{proposals.length} WAITING</Badge></div>
       {proposals.length === 0 ? <Empty title="Nothing waiting on you" detail={decisions.length ? `${decisions.length} decision(s) were accepted in this session.` : "Proposals appear only after the backend emits a proposal event."} /> : proposals.map((proposal) => <ApprovalCard key={proposal.proposal_id} proposal={proposal} />)}
     </div>
   );
@@ -591,18 +836,35 @@ function Settings() {
   const linear = healthFlag(health, "linear_configured");
   const github = healthFlag(health, "github_configured");
   const guild = guildStatus(health, healthState);
+  const live = liveWritesEnabled(health);
+  const allowedRepo = health?.github_repo_allowed
+    ? privateText(health.github_repo_allowed)
+    : "Not reported";
   return (
     <div className="settings-page">
       <div className="settings-nav"><button className="active">Integrations</button><button>Runtime boundaries</button><button>Workspace</button></div>
       <div className="settings-content">
         <ErrorBanner />
-        <div className="dry-banner"><Badge tone="warn">DRY RUN</Badge><div><strong>External actions are previews only</strong><span>Linear tickets, GitHub changes, Slack replies, and remediation actions must not be read as production writes.</span></div></div>
+        <div className={`settings-mode-banner ${live ? "live" : "dry"}`}>
+          <Badge tone={live ? "bad" : "warn"}>{live ? "LIVE WRITES ENABLED" : "DRY RUN"}</Badge>
+          <div>
+            <strong>{live ? "Controlled external writes are available" : "External actions are previews only"}</strong>
+            <span>{live ? "Every live approval requires explicit intent and exact alert ID confirmation." : "Connector output must not be read as a production write."}</span>
+          </div>
+        </div>
+        <section>
+          <div className="section-title"><h2>Connector write boundary</h2><p>Mode and repository allowance come from GET /bridge/health. Credentials are never displayed.</p></div>
+          <div className="workspace-settings connector-boundary-settings">
+            <span><small>Connector mode</small><strong className={live ? "live-text" : ""}>{live ? "LIVE WRITES ENABLED" : "DRY RUN"}</strong></span>
+            <span><small>Allowed GitHub repository</small><strong className="mono">{allowedRepo}</strong></span>
+          </div>
+        </section>
         <section>
           <div className="section-title"><h2>Operational integrations</h2><p>Status comes from GET /bridge/health; unknown values stay unknown.</p></div>
           <div className="settings-list">
             <IntegrationStatus icon={<SlackBrand />} name="Slack" detail="Incident intake via bridge messages" status={slack} />
-            <IntegrationStatus icon={<LinearBrand />} name="Linear" detail="Dry-run issue preview destination" status={linear} />
-            <IntegrationStatus icon={<GitHubBrand />} name="GitHub" detail="Dry-run change preview destination" status={github} />
+            <IntegrationStatus icon={<LinearBrand />} name="Linear" detail={live ? "Controlled issue write destination" : "Dry-run issue preview destination"} status={linear} />
+            <IntegrationStatus icon={<GitHubBrand />} name="GitHub" detail={live ? `Allowed repository: ${allowedRepo}` : "Dry-run change preview destination"} status={github} />
           </div>
         </section>
         <section>
@@ -637,6 +899,7 @@ export default function App() {
       <Sidebar active={activeTab} setActive={setActiveTab} />
       <div className="main-shell">
         <TopBar active={activeTab} />
+        <WriteModeBanner />
         <main>{content}</main>
       </div>
     </div>

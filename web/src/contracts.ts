@@ -8,6 +8,8 @@ export interface BridgeHealth {
   ok?: boolean;
   dry_run?: boolean;
   connector_dry_run?: boolean;
+  connector_live_writes_enabled?: boolean;
+  github_repo_allowed?: string | null;
   slack_connected?: boolean;
   slack_configured?: boolean;
   linear_configured?: boolean;
@@ -140,6 +142,53 @@ export interface ActionPreview {
   [key: string]: unknown;
 }
 
+export type ConnectorName = "linear" | "github" | "slack";
+export type ConnectorActionStatus =
+  | "pending"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "skipped"
+  | "replayed";
+
+export interface ConnectorAction {
+  connector: ConnectorName;
+  operation: string;
+  status: ConnectorActionStatus;
+  dry_run: boolean;
+  idempotency_key: string;
+  url?: string | null;
+  identifier?: string | null;
+  branch?: string | null;
+  posted_at?: string | null;
+  error?: string | null;
+  alert_id?: string;
+  proposal_id?: string;
+}
+
+export interface ConnectorWritesRollup {
+  status?: string;
+  total?: number;
+  pending?: number;
+  running?: number;
+  succeeded?: number;
+  failed?: number;
+  skipped?: number;
+  replayed?: number;
+  partial?: boolean;
+  dry_run?: boolean;
+  [key: string]: unknown;
+}
+
+export interface ConnectorWritesReport extends ConnectorWritesRollup {
+  rollup?: ConnectorWritesRollup;
+  actions?: ConnectorAction[];
+  proposal_id?: string;
+  alert_id?: string;
+  started_at?: string;
+  completed_at?: string;
+}
+
 export interface BridgeReport {
   alert_id?: string;
   incident_id?: string;
@@ -148,6 +197,7 @@ export interface BridgeReport {
   linear_preview?: Record<string, unknown>;
   github_preview?: Record<string, unknown>;
   slack_preview?: Record<string, unknown>;
+  connector_writes?: ConnectorWritesReport;
   [key: string]: unknown;
 }
 
@@ -159,7 +209,8 @@ export type RunbookEventName =
   | "action"
   | "outcome"
   | "resolution"
-  | "bridge_report";
+  | "bridge_report"
+  | "connector_action";
 
 export type RunbookEventPayload =
   | Alert
@@ -169,7 +220,8 @@ export type RunbookEventPayload =
   | ActionEvent
   | OutcomeEvent
   | Resolution
-  | BridgeReport;
+  | BridgeReport
+  | ConnectorAction;
 
 export interface TimelineEvent {
   id: string;

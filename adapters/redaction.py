@@ -42,6 +42,16 @@ def redact_text(value: str) -> str:
     return value
 
 
+def redact_secrets(value: str, *secrets: str) -> str:
+    """Redact known connector values in addition to credential-shaped text."""
+
+    value = redact_text(value)
+    for secret in secrets:
+        if secret:
+            value = value.replace(secret, REDACTED)
+    return value
+
+
 def redact_data(value: Any) -> Any:
     """Recursively redact string values in JSON-like report data."""
 
