@@ -1,0 +1,8 @@
+pydantic
+python-dotenv
+falkordb
+laser-sdk
+rocketride
+fastapi
+uvicorn
+httpx

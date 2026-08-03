@@ -1,0 +1,5 @@
+run,operation,started,time,status,label,mode,scenario_pack,hypothesis_accuracy,action_accuracy,safe_action_rate,mean_confidence,graph_query_latency_ms,rocketride_call_success,overall_pass
+6bdf055e,runbook-evaluation:grounded-all,2026-08-03 12:13:06,0:00:50,completed,grounded-all,grounded,all,1.0,1.0,1.0,0.6333330273628235,611.3333129882812,1.0,1.0
+f475856f,runbook-evaluation:graph-off-all,2026-08-03 12:14:05,0:00:37,error,graph-off-all,graph-off,all,,,,,,,
+313004c4,runbook-evaluation:graph-off-all,2026-08-03 12:14:50,0:00:40,completed,graph-off-all,graph-off,all,1.0,1.0,1.0,0.3833329975605011,0.0,1.0,1.0
+768670f8,runbook-evaluation:graph-off-all,2026-08-03 12:20:32,0:00:42,completed,graph-off-all,graph-off,all,1.0,1.0,1.0,0.3499999940395355,0.0,1.0,1.0

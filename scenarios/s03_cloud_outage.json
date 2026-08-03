@@ -1,0 +1,37 @@
+{
+  "scenario_id": "s03_cloud_outage",
+  "title": "External cloud-provider degradation",
+  "trigger": {
+    "alert_id": "alrt_s03_checkout_external",
+    "fired_at": "2026-08-03T20:05:00Z",
+    "severity": "critical",
+    "service": "checkout-service",
+    "metric": "dependency_timeout_pct",
+    "value": 31.0,
+    "threshold": 5.0,
+    "labels": {
+      "env": "prod",
+      "region": "us-east-1",
+      "cluster": "primary"
+    },
+    "annotations": {
+      "summary": "Checkout dependencies are timing out"
+    }
+  },
+  "seed": {
+    "recent_deploys": [],
+    "matching_incidents": [],
+    "cloud_provider": {
+      "name": "AWS",
+      "region": "us-east-1"
+    }
+  },
+  "expected": {
+    "hypothesis_type": "external_event",
+    "affected_entity": "AWS us-east-1",
+    "action_type": "notify",
+    "action_target": "on-call",
+    "safety_class": "safe",
+    "requires_linkup": true
+  }
+}

@@ -1,0 +1,14 @@
+.env
+.rocketride/
+.local/
+.venv/
+.guild-venv/
+.guild-home/
+/results.json
+/guild-comparison.csv
+/guild-comparison*.csv
+/guild-runs*.json
+__pycache__/
+*.log
+*.pyc
+.DS_Store

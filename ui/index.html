@@ -1,0 +1,2368 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Runbook Incident Command</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b0e0d;
+      --surface: #121715;
+      --surface-2: #18201d;
+      --surface-3: #202a26;
+      --border: #2e3b35;
+      --border-strong: #465a50;
+      --text: #f1f5f2;
+      --muted: #9caca4;
+      --green: #55d38a;
+      --green-dark: #173b29;
+      --amber: #f3b958;
+      --amber-dark: #3b2c14;
+      --red: #ff756f;
+      --red-dark: #411e1c;
+      --blue: #83b8ff;
+      --blue-dark: #172c48;
+      --focus: #e5f2ea;
+      --radius: 14px;
+      --shadow: 0 18px 44px rgba(0, 0, 0, 0.28);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      min-height: 100%;
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    body {
+      min-width: 320px;
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+    }
+
+    button,
+    select {
+      cursor: pointer;
+    }
+
+    button:disabled,
+    input:disabled,
+    select:disabled,
+    textarea:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+    }
+
+    button:focus-visible,
+    input:focus-visible,
+    select:focus-visible,
+    textarea:focus-visible {
+      outline: 2px solid var(--focus);
+      outline-offset: 2px;
+    }
+
+    .shell {
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr);
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 16px 22px;
+      border-bottom: 1px solid var(--border);
+      background: #0e1210;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .brand-mark {
+      width: 36px;
+      height: 36px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--green);
+      border-radius: 10px;
+      color: var(--green);
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      background: var(--green-dark);
+      flex: 0 0 auto;
+    }
+
+    .brand h1 {
+      margin: 0;
+      font-size: 16px;
+      line-height: 1.1;
+      letter-spacing: 0.01em;
+    }
+
+    .brand p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .status-cluster {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 9px;
+      flex-wrap: wrap;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      min-height: 30px;
+      padding: 5px 10px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      color: var(--muted);
+      background: var(--surface);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--amber);
+      box-shadow: 0 0 0 3px rgba(243, 185, 88, 0.11);
+    }
+
+    .status-pill[data-state="connected"] .status-dot,
+    .status-pill[data-state="healthy"] .status-dot {
+      background: var(--green);
+      box-shadow: 0 0 0 3px rgba(85, 211, 138, 0.11);
+    }
+
+    .status-pill[data-state="error"] .status-dot {
+      background: var(--red);
+      box-shadow: 0 0 0 3px rgba(255, 117, 111, 0.11);
+    }
+
+    .health-retry {
+      padding: 0;
+      border: 0;
+      color: inherit;
+      background: transparent;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+
+    .boundary-strip {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 22px;
+      overflow-x: auto;
+      border-bottom: 1px solid var(--border);
+      background: #0b0f0d;
+      scrollbar-width: thin;
+    }
+
+    .boundary-label {
+      flex: 0 0 auto;
+      padding: 4px 8px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 750;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+    }
+
+    .boundary-label strong {
+      color: var(--text);
+    }
+
+    .boundary-arrow {
+      color: var(--border-strong);
+      font-size: 12px;
+    }
+
+    .dashboard {
+      display: grid;
+      grid-template-columns: minmax(270px, 0.8fr) minmax(410px, 1.35fr) minmax(330px, 1fr);
+      min-height: 0;
+      height: calc(100vh - 105px);
+    }
+
+    .column {
+      min-width: 0;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--border);
+      background: var(--bg);
+    }
+
+    .column:last-child {
+      border-right: 0;
+    }
+
+    .column-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 16px 17px 13px;
+      border-bottom: 1px solid var(--border);
+      background: #0e1210;
+    }
+
+    .eyebrow {
+      margin: 0 0 4px;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .column-title {
+      margin: 0;
+      font-size: 15px;
+      letter-spacing: -0.01em;
+    }
+
+    .count {
+      min-width: 26px;
+      height: 24px;
+      display: inline-grid;
+      place-items: center;
+      padding: 0 7px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      color: var(--muted);
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .column-scroll {
+      min-height: 0;
+      overflow-y: auto;
+      padding: 14px;
+      scrollbar-color: var(--border-strong) transparent;
+      scrollbar-width: thin;
+    }
+
+    .empty-state {
+      display: grid;
+      place-items: center;
+      min-height: 180px;
+      padding: 26px;
+      border: 1px dashed var(--border);
+      border-radius: var(--radius);
+      color: var(--muted);
+      text-align: center;
+      line-height: 1.55;
+      font-size: 13px;
+    }
+
+    .feed {
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+    }
+
+    .alert-card {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--blue);
+      border-radius: 10px;
+      color: var(--text);
+      background: var(--surface);
+      text-align: left;
+      transition: border-color 120ms ease, background-color 120ms ease;
+    }
+
+    .alert-card:hover {
+      border-color: var(--border-strong);
+      background: var(--surface-2);
+    }
+
+    .alert-card[data-severity="critical"] {
+      border-left-color: var(--red);
+    }
+
+    .alert-card[data-severity="warning"] {
+      border-left-color: var(--amber);
+    }
+
+    .alert-card[data-severity="info"] {
+      border-left-color: var(--blue);
+    }
+
+    .alert-top,
+    .alert-values,
+    .proposal-top,
+    .hypothesis-top,
+    .section-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .alert-service {
+      overflow: hidden;
+      font-size: 13px;
+      font-weight: 750;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .severity,
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 21px;
+      padding: 3px 7px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      color: var(--muted);
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .severity[data-level="critical"],
+    .badge.danger {
+      border-color: #6d312e;
+      color: var(--red);
+      background: var(--red-dark);
+    }
+
+    .severity[data-level="warning"],
+    .badge.warning {
+      border-color: #6c5125;
+      color: var(--amber);
+      background: var(--amber-dark);
+    }
+
+    .severity[data-level="info"],
+    .badge.info {
+      border-color: #2b4e7b;
+      color: var(--blue);
+      background: var(--blue-dark);
+    }
+
+    .badge.good {
+      border-color: #2a6747;
+      color: var(--green);
+      background: var(--green-dark);
+    }
+
+    .alert-metric {
+      margin: 9px 0;
+      overflow-wrap: anywhere;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .alert-values {
+      align-items: flex-end;
+    }
+
+    .metric-value {
+      font-size: 18px;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.03em;
+    }
+
+    .metric-threshold,
+    .timestamp {
+      color: var(--muted);
+      font-size: 10px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .judge-panel {
+      flex: 0 0 auto;
+      padding: 14px;
+      border-top: 1px solid var(--border);
+      background: #0e1210;
+    }
+
+    .judge-heading {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 11px;
+    }
+
+    .judge-heading h3 {
+      margin: 0;
+      font-size: 13px;
+    }
+
+    .judge-heading p {
+      margin: 3px 0 0;
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    .graph-toggle {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      flex: 0 0 auto;
+      min-height: 36px;
+      padding: 6px 9px;
+      border: 1px solid var(--green);
+      border-radius: 10px;
+      color: var(--green);
+      background: var(--green-dark);
+      font-size: 10px;
+      font-weight: 850;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+
+    .graph-toggle:has(input:not(:checked)) {
+      border-color: var(--border-strong);
+      color: var(--muted);
+      background: var(--surface-2);
+    }
+
+    .graph-toggle input {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .switch-track {
+      width: 29px;
+      height: 16px;
+      padding: 2px;
+      border: 1px solid currentColor;
+      border-radius: 999px;
+    }
+
+    .switch-knob {
+      display: block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: currentColor;
+      transform: translateX(13px);
+      transition: transform 120ms ease;
+    }
+
+    .graph-toggle input:not(:checked) + .switch-track .switch-knob {
+      transform: translateX(0);
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .field {
+      display: grid;
+      gap: 5px;
+      min-width: 0;
+    }
+
+    .field.full {
+      grid-column: 1 / -1;
+    }
+
+    .field label {
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+    }
+
+    .input,
+    .select,
+    .textarea {
+      width: 100%;
+      min-width: 0;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      background: var(--surface-2);
+    }
+
+    .input,
+    .select {
+      height: 36px;
+      padding: 0 10px;
+    }
+
+    .textarea {
+      min-height: 68px;
+      padding: 9px 10px;
+      resize: vertical;
+      line-height: 1.45;
+    }
+
+    .input::placeholder,
+    .textarea::placeholder {
+      color: #69766f;
+    }
+
+    .input[aria-invalid="true"],
+    .select[aria-invalid="true"],
+    .textarea[aria-invalid="true"] {
+      border-color: var(--red);
+    }
+
+    .button {
+      min-height: 37px;
+      padding: 8px 12px;
+      border: 1px solid var(--border-strong);
+      border-radius: 8px;
+      color: var(--text);
+      background: var(--surface-2);
+      font-weight: 750;
+      font-size: 12px;
+    }
+
+    .button:hover:not(:disabled) {
+      border-color: #647a70;
+      background: var(--surface-3);
+    }
+
+    .button.primary {
+      border-color: var(--green);
+      color: #07120c;
+      background: var(--green);
+    }
+
+    .button.danger {
+      border-color: var(--red);
+      color: var(--red);
+      background: var(--red-dark);
+    }
+
+    .button.warning {
+      border-color: var(--amber);
+      color: var(--amber);
+      background: var(--amber-dark);
+    }
+
+    .button.ghost {
+      border-color: transparent;
+      color: var(--muted);
+      background: transparent;
+    }
+
+    .form-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-top: 9px;
+    }
+
+    .form-message {
+      min-height: 15px;
+      color: var(--muted);
+      font-size: 10px;
+      line-height: 1.4;
+    }
+
+    .form-message.error {
+      color: var(--red);
+    }
+
+    .hypotheses-list {
+      display: grid;
+      gap: 9px;
+      margin-bottom: 15px;
+    }
+
+    .hypothesis-card {
+      width: 100%;
+      padding: 13px;
+      border: 1px solid var(--border);
+      border-radius: 11px;
+      color: var(--text);
+      background: var(--surface);
+      text-align: left;
+    }
+
+    .hypothesis-card:hover {
+      border-color: var(--border-strong);
+    }
+
+    .hypothesis-card.selected {
+      border-color: var(--green);
+      background: #132019;
+      box-shadow: inset 3px 0 0 var(--green);
+    }
+
+    .rank {
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .confidence {
+      font-size: 15px;
+      font-weight: 850;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .confidence.low {
+      color: var(--amber);
+    }
+
+    .hypothesis-card h3 {
+      margin: 10px 0 7px;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .hypothesis-meta {
+      display: flex;
+      gap: 7px;
+      flex-wrap: wrap;
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    .warning-box,
+    .error-box,
+    .info-box {
+      margin-bottom: 12px;
+      padding: 10px 11px;
+      border: 1px solid #6c5125;
+      border-radius: 9px;
+      color: #ffd58d;
+      background: var(--amber-dark);
+      font-size: 11px;
+      line-height: 1.45;
+    }
+
+    .error-box {
+      border-color: #6d312e;
+      color: #ffaaa6;
+      background: var(--red-dark);
+    }
+
+    .info-box {
+      border-color: #2b4e7b;
+      color: #b7d5ff;
+      background: var(--blue-dark);
+    }
+
+    .evidence-panel {
+      padding: 14px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface);
+    }
+
+    .section-heading h3 {
+      margin: 0;
+      font-size: 13px;
+    }
+
+    .section-heading p {
+      margin: 3px 0 0;
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    .path-root {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      margin-top: 14px;
+      padding: 10px;
+      border: 1px solid var(--green);
+      border-radius: 9px;
+      color: var(--green);
+      background: var(--green-dark);
+      font-size: 11px;
+      font-weight: 750;
+      overflow-wrap: anywhere;
+    }
+
+    .path-root::before {
+      content: "";
+      width: 9px;
+      height: 9px;
+      flex: 0 0 auto;
+      border: 2px solid var(--green);
+      border-radius: 50%;
+      background: var(--surface);
+    }
+
+    .evidence-paths {
+      position: relative;
+      display: grid;
+      gap: 10px;
+      margin-top: 12px;
+      padding-left: 23px;
+    }
+
+    .evidence-paths::before {
+      content: "";
+      position: absolute;
+      top: -12px;
+      bottom: 18px;
+      left: 14px;
+      width: 1px;
+      background: var(--border-strong);
+    }
+
+    .evidence-item {
+      position: relative;
+      padding: 10px 11px;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      background: var(--surface-2);
+    }
+
+    .evidence-item::before {
+      content: "";
+      position: absolute;
+      top: 17px;
+      left: -10px;
+      width: 9px;
+      height: 1px;
+      background: var(--border-strong);
+    }
+
+    .evidence-ref {
+      margin: 7px 0 5px;
+      color: var(--text);
+      font-size: 11px;
+      font-weight: 750;
+      overflow-wrap: anywhere;
+    }
+
+    .evidence-detail,
+    .reasoning {
+      margin: 0;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+    }
+
+    .reasoning {
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+    }
+
+    .proposal-card {
+      padding: 15px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+
+    .proposal-id {
+      max-width: 180px;
+      overflow: hidden;
+      color: var(--muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 10px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .guild-id {
+      display: grid;
+      gap: 4px;
+      margin: 11px 0;
+      padding: 9px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #101512;
+    }
+
+    .guild-id span {
+      color: var(--muted);
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .guild-id code {
+      color: var(--text);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 11px;
+      overflow-wrap: anywhere;
+      user-select: all;
+    }
+
+    .action-block {
+      margin: 15px 0 13px;
+      padding: 13px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--surface-2);
+    }
+
+    .action-type {
+      color: var(--green);
+      font-size: 18px;
+      font-weight: 850;
+      letter-spacing: -0.02em;
+      text-transform: capitalize;
+    }
+
+    .action-target {
+      margin-top: 5px;
+      color: var(--muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 11px;
+      overflow-wrap: anywhere;
+    }
+
+    .proposal-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 9px;
+      margin-bottom: 13px;
+    }
+
+    .proposal-stat {
+      padding: 9px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #101512;
+    }
+
+    .proposal-stat span {
+      display: block;
+      margin-bottom: 5px;
+      color: var(--muted);
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .proposal-stat strong {
+      font-size: 11px;
+      overflow-wrap: anywhere;
+    }
+
+    .params {
+      display: grid;
+      gap: 6px;
+      margin: 11px 0 14px;
+    }
+
+    .param {
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--border);
+      font-size: 10px;
+    }
+
+    .param-key {
+      color: var(--muted);
+      overflow-wrap: anywhere;
+    }
+
+    .param-value {
+      color: var(--text);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      text-align: right;
+      overflow-wrap: anywhere;
+    }
+
+    .decision-buttons {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+      margin-top: 15px;
+    }
+
+    .decision-stage {
+      display: none;
+      margin-top: 13px;
+      padding: 13px;
+      border: 1px solid var(--border-strong);
+      border-radius: 11px;
+      background: #101512;
+    }
+
+    .decision-stage.visible {
+      display: block;
+    }
+
+    .decision-stage h3 {
+      margin: 0 0 4px;
+      font-size: 13px;
+    }
+
+    .decision-stage > p {
+      margin: 0 0 12px;
+      color: var(--muted);
+      font-size: 10px;
+      line-height: 1.45;
+    }
+
+    .modify-fields {
+      display: none;
+      gap: 9px;
+      margin-bottom: 10px;
+    }
+
+    .modify-fields.visible {
+      display: grid;
+    }
+
+    .params-editor {
+      display: grid;
+      gap: 7px;
+    }
+
+    .param-row {
+      display: grid;
+      grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr) auto;
+      gap: 6px;
+    }
+
+    .icon-button {
+      width: 36px;
+      height: 36px;
+      padding: 0;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--red);
+      background: var(--surface-2);
+      font-size: 18px;
+      line-height: 1;
+    }
+
+    .confirmation-field {
+      display: none;
+      margin-top: 10px;
+      padding: 10px;
+      border: 1px solid #6d312e;
+      border-radius: 9px;
+      background: var(--red-dark);
+    }
+
+    .confirmation-field.visible {
+      display: grid;
+      gap: 6px;
+    }
+
+    .confirmation-field label {
+      color: #ffb1ad;
+      font-size: 10px;
+      line-height: 1.45;
+    }
+
+    .confirmation-target {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-weight: 800;
+      overflow-wrap: anywhere;
+    }
+
+    .stage-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 11px;
+    }
+
+    .activity-log {
+      margin-top: 13px;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      color: var(--muted);
+      background: #0d110f;
+      font-size: 10px;
+      line-height: 1.45;
+    }
+
+    .motion-timeline {
+      margin-bottom: 13px;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: 11px;
+      background: var(--surface);
+    }
+
+    .motion-timeline .section-heading {
+      align-items: flex-start;
+    }
+
+    .timeline-list {
+      position: relative;
+      display: grid;
+      gap: 9px;
+      margin-top: 11px;
+      padding-left: 18px;
+    }
+
+    .timeline-list::before {
+      content: "";
+      position: absolute;
+      top: 6px;
+      bottom: 8px;
+      left: 5px;
+      width: 1px;
+      background: var(--border-strong);
+    }
+
+    .timeline-item {
+      position: relative;
+      min-width: 0;
+    }
+
+    .timeline-item::before {
+      content: "";
+      position: absolute;
+      top: 5px;
+      left: -17px;
+      width: 7px;
+      height: 7px;
+      border: 2px solid var(--blue);
+      border-radius: 50%;
+      background: var(--surface);
+    }
+
+    .timeline-item[data-tone="warning"]::before {
+      border-color: var(--amber);
+    }
+
+    .timeline-item[data-tone="good"]::before {
+      border-color: var(--green);
+    }
+
+    .timeline-item[data-tone="danger"]::before {
+      border-color: var(--red);
+    }
+
+    .timeline-item-title {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+      color: var(--text);
+      font-size: 11px;
+      font-weight: 750;
+      line-height: 1.35;
+    }
+
+    .timeline-item-detail {
+      margin: 3px 0 0;
+      color: var(--muted);
+      font-size: 10px;
+      line-height: 1.4;
+      overflow-wrap: anywhere;
+    }
+
+    .simulated-label {
+      color: var(--amber);
+      letter-spacing: 0.06em;
+    }
+
+    .timeline-empty {
+      margin: 10px 0 0;
+      color: var(--muted);
+      font-size: 10px;
+      line-height: 1.45;
+    }
+
+    .resolution-summary {
+      display: grid;
+      gap: 4px;
+      margin-top: 11px;
+      padding: 9px;
+      border: 1px solid #2a6747;
+      border-radius: 8px;
+      color: var(--green);
+      background: var(--green-dark);
+      font-size: 10px;
+      line-height: 1.4;
+    }
+
+    .resolution-summary strong {
+      color: var(--text);
+      font-size: 11px;
+      text-transform: capitalize;
+    }
+
+    @media (max-width: 1180px) {
+      .dashboard {
+        grid-template-columns: minmax(260px, 0.72fr) minmax(380px, 1.15fr);
+        height: auto;
+        min-height: calc(100vh - 105px);
+      }
+
+      .column {
+        height: 720px;
+      }
+
+      .column.proposals {
+        grid-column: 1 / -1;
+        height: auto;
+        min-height: 540px;
+        border-top: 1px solid var(--border);
+      }
+    }
+
+    @media (max-width: 760px) {
+      .topbar {
+        align-items: flex-start;
+        padding: 14px;
+      }
+
+      .brand p {
+        display: none;
+      }
+
+      .status-cluster {
+        gap: 6px;
+      }
+
+      .status-pill {
+        padding: 5px 8px;
+      }
+
+      .boundary-strip {
+        padding: 8px 14px;
+      }
+
+      .dashboard {
+        display: block;
+      }
+
+      .column,
+      .column.proposals {
+        width: 100%;
+        height: auto;
+        min-height: 620px;
+        border-right: 0;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .column-scroll {
+        max-height: 660px;
+      }
+
+      .judge-panel {
+        position: static;
+      }
+    }
+
+    @media (max-width: 430px) {
+      .topbar {
+        display: grid;
+      }
+
+      .status-cluster {
+        justify-content: flex-start;
+      }
+
+      .form-grid,
+      .proposal-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .field.full {
+        grid-column: auto;
+      }
+
+      .decision-buttons {
+        grid-template-columns: 1fr;
+      }
+
+      .param-row {
+        grid-template-columns: 1fr auto;
+      }
+
+      .param-row .param-value-input {
+        grid-column: 1 / -1;
+        grid-row: 2;
+      }
+
+      .param-row .icon-button {
+        grid-column: 2;
+        grid-row: 1;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        scroll-behavior: auto !important;
+        transition: none !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">RB</div>
+        <div>
+          <h1>Runbook Incident Command</h1>
+          <p>Graph-native diagnosis with human-gated remediation</p>
+        </div>
+      </div>
+      <div class="status-cluster" aria-label="System status">
+        <div class="status-pill" id="streamStatus" data-state="connecting">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span id="streamStatusText">Events connecting</span>
+        </div>
+        <div class="status-pill" id="healthStatus" data-state="checking">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span id="healthStatusText">API checking</span>
+        </div>
+        <div class="status-pill" id="guildStatus" data-state="checking">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span id="guildStatusText">Guild pending · local non-qualifying</span>
+        </div>
+      </div>
+    </header>
+
+    <nav class="boundary-strip" aria-label="Sponsor boundaries">
+      <span class="boundary-label"><strong>LaserData</strong> · durable event stream</span>
+      <span class="boundary-arrow" aria-hidden="true">→</span>
+      <span class="boundary-label"><strong>FalkorDB</strong> · operational graph</span>
+      <span class="boundary-arrow" aria-hidden="true">→</span>
+      <span class="boundary-label"><strong>RocketRide</strong> · inference</span>
+      <span class="boundary-arrow" aria-hidden="true">→</span>
+      <span class="boundary-label" id="guildBoundaryLabel"><strong>Guild.ai</strong> · Guild pending · local non-qualifying</span>
+    </nav>
+
+    <main class="dashboard">
+      <section class="column alerts" aria-labelledby="alertsTitle">
+        <div class="column-header">
+          <div>
+            <p class="eyebrow">LaserData boundary</p>
+            <h2 class="column-title" id="alertsTitle">Live alert feed</h2>
+          </div>
+          <span class="count" id="alertCount" aria-label="Alert count">0</span>
+        </div>
+        <div class="column-scroll" id="alertFeed" aria-live="polite">
+          <div class="empty-state" id="alertEmpty">Waiting for real alert events from the stream.</div>
+        </div>
+
+        <div class="judge-panel">
+          <div class="judge-heading">
+            <div>
+              <h3>Judge alert input</h3>
+              <p>Structured fields only. No raw JSON.</p>
+            </div>
+            <label class="graph-toggle" title="Sent as graph_enabled on every alert">
+              <input type="checkbox" id="graphEnabled" checked>
+              <span class="switch-track" aria-hidden="true"><span class="switch-knob"></span></span>
+              <span>FalkorDB <strong id="graphToggleState">ON</strong></span>
+            </label>
+          </div>
+
+          <form id="alertForm" novalidate>
+            <div class="form-grid">
+              <div class="field">
+                <label for="service">Service</label>
+                <input class="input" id="service" name="service" autocomplete="off" placeholder="checkout-service" required>
+              </div>
+              <div class="field">
+                <label for="metric">Metric</label>
+                <input class="input" id="metric" name="metric" autocomplete="off" placeholder="error_rate" required>
+              </div>
+              <div class="field">
+                <label for="value">Value</label>
+                <input class="input" id="value" name="value" type="number" inputmode="decimal" step="any" placeholder="8.4" required>
+              </div>
+              <div class="field">
+                <label for="threshold">Threshold</label>
+                <input class="input" id="threshold" name="threshold" type="number" inputmode="decimal" step="any" placeholder="5" required>
+              </div>
+              <div class="field full">
+                <label for="severity">Severity</label>
+                <select class="select" id="severity" name="severity" required>
+                  <option value="">Select severity</option>
+                  <option value="critical">Critical</option>
+                  <option value="warning">Warning</option>
+                  <option value="info">Info</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-actions">
+              <div class="form-message" id="alertMessage" role="status"></div>
+              <button class="button primary" id="sendAlert" type="submit">Send alert</button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <section class="column hypotheses" aria-labelledby="hypothesesTitle">
+        <div class="column-header">
+          <div>
+            <p class="eyebrow">FalkorDB + RocketRide</p>
+            <h2 class="column-title" id="hypothesesTitle">Ranked hypotheses</h2>
+          </div>
+          <span class="count" id="hypothesisCount" aria-label="Hypothesis count">0</span>
+        </div>
+        <div class="column-scroll" id="hypothesesContent" aria-live="polite">
+          <div class="empty-state">No diagnosis yet. Send an alert or wait for a hypotheses event.</div>
+        </div>
+      </section>
+
+      <section class="column proposals" aria-labelledby="proposalTitle">
+        <div class="column-header">
+          <div>
+            <p class="eyebrow" id="guildProposalBoundary">Guild pending · local non-qualifying</p>
+            <h2 class="column-title" id="proposalTitle">Pending proposal</h2>
+          </div>
+          <span class="badge" id="proposalState">Waiting</span>
+        </div>
+        <div class="column-scroll">
+          <section class="motion-timeline" aria-labelledby="motionTimelineTitle">
+            <div class="section-heading">
+              <div>
+                <h3 id="motionTimelineTitle">Motion timeline</h3>
+                <p>SSE lifecycle · simulated execution only</p>
+              </div>
+              <span class="badge" id="motionState">Waiting</span>
+            </div>
+            <div id="motionTimeline" aria-live="polite">
+              <p class="timeline-empty">No decision, simulated action, outcome, or resolution events received.</p>
+            </div>
+          </section>
+          <div id="proposalContent" aria-live="polite">
+            <div class="empty-state">No pending proposal. Decisions are never inferred from UI state.</div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    "use strict";
+
+    const ACTION_TYPES = ["rollback", "restart", "scale", "flush_cache", "notify", "diagnostic", "none"];
+    const SAFETY_CLASS_FOR_ACTION = {
+      rollback: "standard",
+      restart: "standard",
+      scale: "safe",
+      flush_cache: "safe",
+      notify: "safe",
+      diagnostic: "safe",
+      none: "safe"
+    };
+    const LOW_CONFIDENCE_THRESHOLD = 0.6;
+    const MAX_ALERTS = 100;
+
+    const state = {
+      alerts: [],
+      hypothesisSet: null,
+      selectedHypothesisId: null,
+      proposal: null,
+      lastDecision: null,
+      motions: new Map(),
+      activeMotionProposalId: null,
+      motionSequence: 0,
+      decisionMode: null,
+      submittingAlert: false,
+      submittingDecision: false,
+      guildMode: "local_fallback",
+      guildQualifying: false
+    };
+
+    const elements = {
+      alertFeed: document.getElementById("alertFeed"),
+      alertCount: document.getElementById("alertCount"),
+      alertForm: document.getElementById("alertForm"),
+      alertMessage: document.getElementById("alertMessage"),
+      sendAlert: document.getElementById("sendAlert"),
+      graphEnabled: document.getElementById("graphEnabled"),
+      graphToggleState: document.getElementById("graphToggleState"),
+      hypothesesContent: document.getElementById("hypothesesContent"),
+      hypothesisCount: document.getElementById("hypothesisCount"),
+      proposalContent: document.getElementById("proposalContent"),
+      proposalState: document.getElementById("proposalState"),
+      motionTimeline: document.getElementById("motionTimeline"),
+      motionState: document.getElementById("motionState"),
+      streamStatus: document.getElementById("streamStatus"),
+      streamStatusText: document.getElementById("streamStatusText"),
+      healthStatus: document.getElementById("healthStatus"),
+      healthStatusText: document.getElementById("healthStatusText"),
+      guildStatus: document.getElementById("guildStatus"),
+      guildStatusText: document.getElementById("guildStatusText"),
+      guildBoundaryLabel: document.getElementById("guildBoundaryLabel"),
+      guildProposalBoundary: document.getElementById("guildProposalBoundary")
+    };
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function displayValue(value) {
+      if (value === null) return "null";
+      if (typeof value === "object") {
+        try {
+          return JSON.stringify(value);
+        } catch {
+          return "[unavailable]";
+        }
+      }
+      return String(value ?? "—");
+    }
+
+    function timestamp(value) {
+      const date = value ? new Date(value) : new Date();
+      if (Number.isNaN(date.getTime())) return escapeHtml(value || "Time unavailable");
+      return date.toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit"
+      });
+    }
+
+    function eventTime(payload) {
+      return payload?.fired_at || payload?.generated_at || payload?.timestamp || payload?.received_at || null;
+    }
+
+    function percent(value) {
+      const number = Number(value);
+      return Number.isFinite(number) ? `${Math.round(number * 100)}%` : "—";
+    }
+
+    function normalizePayload(payload, singularKey) {
+      if (!payload || typeof payload !== "object") return payload;
+      return payload[singularKey] && typeof payload[singularKey] === "object"
+        ? payload[singularKey]
+        : payload;
+    }
+
+    function isNonNegativeNumber(value) {
+      return value !== null && value !== "" && Number.isFinite(Number(value)) && Number(value) >= 0;
+    }
+
+    function setStatus(container, textNode, status, text) {
+      container.dataset.state = status;
+      textNode.textContent = text;
+    }
+
+    function setAlertMessage(message, isError = false) {
+      elements.alertMessage.textContent = message;
+      elements.alertMessage.classList.toggle("error", isError);
+    }
+
+    function guildIdHtml(label, value) {
+      if (typeof value !== "string" || !value.trim()) return "";
+      return `
+        <div class="guild-id">
+          <span>${escapeHtml(label)}</span>
+          <code title="${escapeHtml(value)}">${escapeHtml(value)}</code>
+        </div>`;
+    }
+
+    function updateGuildStatus(payload) {
+      state.guildMode = typeof payload?.guild_mode === "string" && payload.guild_mode.trim()
+        ? payload.guild_mode
+        : "unknown";
+      state.guildQualifying = payload?.guild_qualifying === true;
+      const label = state.guildQualifying
+        ? "Guild-backed human gate"
+        : "Guild pending · local non-qualifying";
+      setStatus(
+        elements.guildStatus,
+        elements.guildStatusText,
+        state.guildQualifying ? "healthy" : "checking",
+        label
+      );
+      elements.guildStatus.title = `Health-reported Guild mode: ${state.guildMode}`;
+      elements.guildBoundaryLabel.innerHTML = `<strong>Guild.ai</strong> · ${escapeHtml(label)}`;
+      elements.guildProposalBoundary.textContent = label;
+    }
+
+    function renderAlerts() {
+      elements.alertCount.textContent = String(state.alerts.length);
+      if (!state.alerts.length) {
+        elements.alertFeed.innerHTML =
+          '<div class="empty-state">Waiting for real alert events from the stream.</div>';
+        return;
+      }
+
+      elements.alertFeed.innerHTML = `<div class="feed">${state.alerts.map((alert) => {
+        const severity = String(alert.severity || "info").toLowerCase();
+        return `
+          <article class="alert-card" data-severity="${escapeHtml(severity)}">
+            <div class="alert-top">
+              <span class="alert-service">${escapeHtml(alert.service || "Unknown service")}</span>
+              <span class="severity" data-level="${escapeHtml(severity)}">${escapeHtml(severity)}</span>
+            </div>
+            <p class="alert-metric">${escapeHtml(alert.metric || "Metric unavailable")}</p>
+            <div class="alert-values">
+              <div>
+                <div class="metric-value">${escapeHtml(displayValue(alert.value))}</div>
+                <div class="metric-threshold">threshold ${escapeHtml(displayValue(alert.threshold))}</div>
+              </div>
+              <time class="timestamp">${timestamp(eventTime(alert))}</time>
+            </div>
+          </article>`;
+      }).join("")}</div>`;
+
+      requestAnimationFrame(() => {
+        elements.alertFeed.scrollTop = elements.alertFeed.scrollHeight;
+      });
+    }
+
+    function sortedHypotheses() {
+      const hypotheses = Array.isArray(state.hypothesisSet?.hypotheses)
+        ? [...state.hypothesisSet.hypotheses]
+        : [];
+      return hypotheses.sort((a, b) => Number(b.confidence || 0) - Number(a.confidence || 0));
+    }
+
+    function renderHypotheses() {
+      const hypotheses = sortedHypotheses();
+      elements.hypothesisCount.textContent = String(hypotheses.length);
+
+      if (!hypotheses.length) {
+        elements.hypothesesContent.innerHTML =
+          '<div class="empty-state">No diagnosis yet. Send an alert or wait for a hypotheses event.</div>';
+        return;
+      }
+
+      if (!hypotheses.some((item) => item.hypothesis_id === state.selectedHypothesisId)) {
+        state.selectedHypothesisId = hypotheses[0].hypothesis_id;
+      }
+
+      const selected = hypotheses.find((item) => item.hypothesis_id === state.selectedHypothesisId) || hypotheses[0];
+      const confidence = Number(selected.confidence);
+      const lowConfidence = Number.isFinite(confidence) && confidence < LOW_CONFIDENCE_THRESHOLD;
+      const evidence = Array.isArray(selected.evidence) ? selected.evidence : [];
+      const generatedAt = state.hypothesisSet?.generated_at;
+      const graphMs = state.hypothesisSet?.graph_query_ms;
+
+      elements.hypothesesContent.innerHTML = `
+        ${lowConfidence ? `
+          <div class="warning-box" role="alert">
+            Low-confidence diagnosis (${percent(selected.confidence)}). Review every evidence path before acting.
+          </div>` : ""}
+        <div class="hypotheses-list">
+          ${hypotheses.map((hypothesis, index) => {
+            const isLow = Number(hypothesis.confidence) < LOW_CONFIDENCE_THRESHOLD;
+            const selectedClass = hypothesis.hypothesis_id === selected.hypothesis_id ? " selected" : "";
+            return `
+              <button class="hypothesis-card${selectedClass}" type="button"
+                data-hypothesis-id="${escapeHtml(hypothesis.hypothesis_id)}">
+                <div class="hypothesis-top">
+                  <span class="rank">Rank ${index + 1} · ${escapeHtml(hypothesis.type || "unknown")}</span>
+                  <span class="confidence${isLow ? " low" : ""}">${percent(hypothesis.confidence)}</span>
+                </div>
+                <h3>${escapeHtml(hypothesis.root_cause_description || "Description unavailable")}</h3>
+                <div class="hypothesis-meta">
+                  <span>${escapeHtml(hypothesis.affected_entity || "Entity unavailable")}</span>
+                  <span>·</span>
+                  <span>${Array.isArray(hypothesis.evidence) ? hypothesis.evidence.length : 0} evidence paths</span>
+                </div>
+              </button>`;
+          }).join("")}
+        </div>
+
+        <section class="evidence-panel" aria-label="Selected hypothesis evidence">
+          <div class="section-heading">
+            <div>
+              <h3>Graph path and evidence</h3>
+              <p>Constructed only from streamed hypothesis evidence</p>
+            </div>
+            <time class="timestamp">${timestamp(generatedAt)}</time>
+          </div>
+          ${guildIdHtml("Guild handoff ID", state.hypothesisSet?.guild_handoff_id)}
+          <div class="path-root">${escapeHtml(selected.affected_entity || selected.hypothesis_id || "Selected hypothesis")}</div>
+          ${evidence.length ? `
+            <div class="evidence-paths">
+              ${evidence.map((item) => `
+                <article class="evidence-item">
+                  <span class="badge ${item.source === "graph" ? "good" : "info"}">${escapeHtml(item.source || "evidence")}</span>
+                  <div class="evidence-ref">${escapeHtml(item.ref || "Reference unavailable")}</div>
+                  <p class="evidence-detail">${escapeHtml(item.detail || "Detail unavailable")}</p>
+                </article>`).join("")}
+            </div>` : `
+            <div class="warning-box" style="margin-top: 12px; margin-bottom: 0;">
+              This hypothesis contains no evidence records.
+            </div>`}
+          <p class="reasoning">${escapeHtml(selected.reasoning || "Reasoning unavailable")}</p>
+          ${Number.isFinite(Number(graphMs)) ? `
+            <div class="activity-log">FalkorDB query ${escapeHtml(graphMs)} ms · ${evidence.length} cited path${evidence.length === 1 ? "" : "s"}</div>` : ""}
+        </section>`;
+
+      elements.hypothesesContent.querySelectorAll("[data-hypothesis-id]").forEach((button) => {
+        button.addEventListener("click", () => {
+          state.selectedHypothesisId = button.dataset.hypothesisId;
+          renderHypotheses();
+        });
+      });
+    }
+
+    function proposalParamsHtml(params) {
+      const entries = Object.entries(params && typeof params === "object" && !Array.isArray(params) ? params : {});
+      if (!entries.length) return '<div class="param"><span class="param-key">Parameters</span><span class="param-value">None</span></div>';
+      return entries.map(([key, value]) => `
+        <div class="param">
+          <span class="param-key">${escapeHtml(key)}</span>
+          <span class="param-value">${escapeHtml(displayValue(value))}</span>
+        </div>`).join("");
+    }
+
+    function paramsEditorHtml(params) {
+      const entries = Object.entries(params && typeof params === "object" && !Array.isArray(params) ? params : {});
+      const rows = entries.length ? entries : [["", ""]];
+      return rows.map(([key, value]) => paramRowHtml(key, value)).join("");
+    }
+
+    function ensureMotion(proposalId, alertId = null) {
+      if (!state.motions.has(proposalId)) {
+        state.motions.set(proposalId, {
+          proposalId,
+          alertId,
+          events: [],
+          resolution: null
+        });
+      }
+      const motion = state.motions.get(proposalId);
+      if (alertId) motion.alertId = alertId;
+      state.activeMotionProposalId = proposalId;
+      return motion;
+    }
+
+    function addMotionEvent(kind, payload, proposalId, alertId = null) {
+      const motion = ensureMotion(proposalId, alertId);
+      const nestedDecisionTime = payload?.reviewer_decision?.timestamp || null;
+      motion.events.push({
+        kind,
+        payload,
+        sequence: state.motionSequence++,
+        time: eventTime(payload) || nestedDecisionTime || new Date().toISOString()
+      });
+      if (kind === "resolution") motion.resolution = payload;
+      renderMotionTimeline();
+    }
+
+    function motionEventHtml(event) {
+      const payload = event.payload;
+      if (event.kind === "decision") {
+        const decision = String(payload.decision || "recorded").toLowerCase();
+        const rejected = decision === "reject";
+        const decisionLabel = rejected ? "rejected" : decision;
+        return `
+          <article class="timeline-item" data-tone="${rejected ? "danger" : "info"}">
+            <div class="timeline-item-title">
+              <span>Decision recorded · ${escapeHtml(decisionLabel)}</span>
+              <time class="timestamp">${timestamp(event.time)}</time>
+            </div>
+            <p class="timeline-item-detail">
+              ReviewerDecision received from SSE.${rejected ? " Rejection is awaiting the final Resolution record." : ""}
+            </p>
+            ${guildIdHtml("Guild task ID", payload.guild_task_id)}
+          </article>`;
+      }
+
+      if (event.kind === "action") {
+        const status = String(payload.status || "").toLowerCase();
+        const actionType = String(payload.action_type || "action").replaceAll("_", " ");
+        return `
+          <article class="timeline-item" data-tone="warning">
+            <div class="timeline-item-title">
+              <span><span class="simulated-label">SIMULATED</span> action ${escapeHtml(status)}</span>
+              <time class="timestamp">${timestamp(event.time)}</time>
+            </div>
+            <p class="timeline-item-detail">
+              ${escapeHtml(actionType)} · ${escapeHtml(payload.action_target || "target unavailable")} · No real service was changed.
+            </p>
+          </article>`;
+      }
+
+      if (event.kind === "outcome") {
+        const status = String(payload.status || "").toLowerCase();
+        const timeout = Math.min(Math.max(Number(payload.timeout_seconds) || 0, 0), 60);
+        const watching = status === "watching";
+        return `
+          <article class="timeline-item" data-tone="${watching ? "info" : status === "verified" ? "good" : "warning"}">
+            <div class="timeline-item-title">
+              <span>${watching
+                ? `Watching for simulated outcome · up to ${escapeHtml(timeout)}s`
+                : `Observed ${escapeHtml(status.replaceAll("_", " "))}`}</span>
+              <time class="timestamp">${timestamp(event.time)}</time>
+            </div>
+            <p class="timeline-item-detail">
+              ${watching
+                ? "Observation window started; final outcome remains pending."
+                : "Observation signal only; awaiting the final Resolution event."}
+            </p>
+          </article>`;
+      }
+
+      const outcome = String(payload.outcome || "recorded").replaceAll("_", " ");
+      return `
+        <article class="timeline-item" data-tone="${payload.outcome === "verified" ? "good" : payload.outcome === "rejected" ? "danger" : "warning"}">
+          <div class="timeline-item-title">
+            <span>${escapeHtml(outcome)} · final Resolution</span>
+            <time class="timestamp">${timestamp(event.time)}</time>
+          </div>
+          <p class="timeline-item-detail">
+            Resolution received from SSE · graph memory persisted as ${escapeHtml(payload.incident_id || "incident unavailable")}.
+          </p>
+          ${guildIdHtml("Guild task ID", payload.reviewer_decision?.guild_task_id)}
+        </article>`;
+    }
+
+    function renderMotionTimeline() {
+      const motion = state.activeMotionProposalId
+        ? state.motions.get(state.activeMotionProposalId)
+        : null;
+      if (!motion || !motion.events.length) {
+        elements.motionState.textContent = "Waiting";
+        elements.motionState.className = "badge";
+        elements.motionTimeline.innerHTML =
+          '<p class="timeline-empty">No decision, simulated action, outcome, or resolution events received.</p>';
+        return;
+      }
+
+      const events = [...motion.events].sort((a, b) => {
+        const aTime = new Date(a.time).getTime();
+        const bTime = new Date(b.time).getTime();
+        if (Number.isFinite(aTime) && Number.isFinite(bTime) && aTime !== bTime) return aTime - bTime;
+        return a.sequence - b.sequence;
+      });
+      const latest = events[events.length - 1];
+      const resolution = motion.resolution;
+      if (resolution) {
+        elements.motionState.textContent = String(resolution.outcome || "Final").replaceAll("_", " ");
+        elements.motionState.className = `badge ${resolution.outcome === "verified" ? "good" : resolution.outcome === "rejected" ? "danger" : "warning"}`;
+      } else if (latest.kind === "outcome" && latest.payload.status === "watching") {
+        elements.motionState.textContent = "Watching";
+        elements.motionState.className = "badge info";
+      } else {
+        elements.motionState.textContent = "Awaiting resolution";
+        elements.motionState.className = "badge info";
+      }
+
+      elements.motionTimeline.innerHTML = `
+        <div class="timeline-list">${events.map(motionEventHtml).join("")}</div>
+        ${resolution ? `
+          <div class="resolution-summary">
+            <strong>Final outcome · ${escapeHtml(String(resolution.outcome).replaceAll("_", " "))}</strong>
+            <span>Graph memory complete · ${escapeHtml(resolution.incident_id)}</span>
+            <span>${escapeHtml(displayValue(resolution.total_latency_ms))} ms · $${escapeHtml(displayValue(resolution.cost_usd))}</span>
+          </div>` : ""}`;
+    }
+
+    function paramRowHtml(key = "", value = "") {
+      return `
+        <div class="param-row">
+          <input class="input param-key-input" aria-label="Parameter key" placeholder="key" value="${escapeHtml(key)}">
+          <input class="input param-value-input" aria-label="Parameter value" placeholder="value" value="${escapeHtml(displayValue(value))}">
+          <button class="icon-button remove-param" type="button" aria-label="Remove parameter">×</button>
+        </div>`;
+    }
+
+    function renderProposal() {
+      const proposal = state.proposal;
+      if (!proposal) {
+        const activeMotion = state.activeMotionProposalId
+          ? state.motions.get(state.activeMotionProposalId)
+          : null;
+        const resolution = activeMotion?.resolution;
+        elements.proposalState.textContent = resolution
+          ? String(resolution.outcome).replaceAll("_", " ")
+          : state.lastDecision ? "Decision recorded" : "Waiting";
+        elements.proposalState.className = resolution
+          ? `badge ${resolution.outcome === "verified" ? "good" : resolution.outcome === "rejected" ? "danger" : "warning"}`
+          : `badge${state.lastDecision ? " info" : ""}`;
+        elements.proposalContent.innerHTML = state.lastDecision
+          ? `<div class="info-box">
+              Decision event received at ${timestamp(eventTime(state.lastDecision))}:
+              ${escapeHtml(state.lastDecision.decision || state.lastDecision.outcome || "recorded")}.
+              ${guildIdHtml("Guild task ID", state.lastDecision.guild_task_id)}
+            </div>
+            <div class="empty-state">No pending proposal. Waiting for the next proposal event.</div>`
+          : '<div class="empty-state">No pending proposal. Decisions are never inferred from UI state.</div>';
+        return;
+      }
+
+      const confidence = Number(proposal.remediator_confidence);
+      const lowConfidence = Number.isFinite(confidence) && confidence < LOW_CONFIDENCE_THRESHOLD;
+      const safetyClass = String(proposal.safety_class || "standard").toLowerCase();
+      const safetyBadge = safetyClass === "destructive" ? "danger" : safetyClass === "safe" ? "good" : "warning";
+      const decisionMode = state.decisionMode;
+
+      elements.proposalState.textContent = "Pending";
+      elements.proposalState.className = "badge warning";
+      elements.proposalContent.innerHTML = `
+        ${lowConfidence ? `
+          <div class="warning-box" role="alert">
+            Low-confidence remediation (${percent(proposal.remediator_confidence)}). Reject or inspect the cited diagnosis before proceeding.
+          </div>` : ""}
+        <article class="proposal-card">
+          <div class="proposal-top">
+            <span class="badge ${safetyBadge}">${escapeHtml(safetyClass)}</span>
+            <span class="proposal-id" title="${escapeHtml(proposal.proposal_id)}">${escapeHtml(proposal.proposal_id || "ID unavailable")}</span>
+          </div>
+          ${guildIdHtml("Guild task ID", proposal.guild_task_id)}
+
+          <div class="action-block">
+            <div class="action-type">${escapeHtml(String(proposal.action_type || "none").replaceAll("_", " "))}</div>
+            <div class="action-target">target: ${escapeHtml(proposal.action_target || "Unavailable")}</div>
+          </div>
+
+          <div class="proposal-grid">
+            <div class="proposal-stat">
+              <span>Confidence</span>
+              <strong>${percent(proposal.remediator_confidence)}</strong>
+            </div>
+            <div class="proposal-stat">
+              <span>Runbook source</span>
+              <strong>${escapeHtml(proposal.runbook_source || "Unavailable")}</strong>
+            </div>
+          </div>
+
+          <div class="params">${proposalParamsHtml(proposal.action_params)}</div>
+          <p class="reasoning">${escapeHtml(proposal.reasoning || "Reasoning unavailable")}</p>
+
+          <div class="decision-buttons" aria-label="Proposal decisions">
+            <button class="button primary decision-choice" type="button" data-decision="approve">Approve</button>
+            <button class="button danger decision-choice" type="button" data-decision="reject">Reject</button>
+            <button class="button warning decision-choice" type="button" data-decision="modify">Modify</button>
+          </div>
+
+          <section class="decision-stage${decisionMode ? " visible" : ""}" id="decisionStage">
+            <h3 id="decisionStageTitle">${decisionMode ? `${capitalize(decisionMode)} proposal` : "Review decision"}</h3>
+            <p>Review the fields below, then use the final button to deliberately send this decision.</p>
+
+            <div class="modify-fields${decisionMode === "modify" ? " visible" : ""}" id="modifyFields">
+              <div class="field">
+                <label for="modifiedActionType">Whitelisted action type</label>
+                <select class="select" id="modifiedActionType">
+                  ${ACTION_TYPES.map((type) => `
+                    <option value="${type}"${proposal.action_type === type ? " selected" : ""}>${escapeHtml(type.replaceAll("_", " "))}</option>`).join("")}
+                </select>
+              </div>
+              <div class="field">
+                <label for="modifiedActionTarget">Action target</label>
+                <input class="input" id="modifiedActionTarget" value="${escapeHtml(proposal.action_target || "")}" required>
+              </div>
+              <div class="field">
+                <label>Action parameters</label>
+                <div class="params-editor" id="paramsEditor">${paramsEditorHtml(proposal.action_params)}</div>
+                <button class="button ghost" id="addParam" type="button">Add parameter</button>
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="reviewerNote">Reviewer note</label>
+              <textarea class="textarea" id="reviewerNote" placeholder="Optional context for the audit trail"></textarea>
+            </div>
+
+            <div class="confirmation-field${requiresTypedConfirmation(decisionMode, safetyClass) ? " visible" : ""}" id="confirmationField">
+              <label for="typedConfirmation">
+                Destructive action. Type <span class="confirmation-target" id="confirmationTarget">${escapeHtml(proposal.action_target || "")}</span> to confirm.
+              </label>
+              <input class="input" id="typedConfirmation" autocomplete="off" spellcheck="false">
+            </div>
+
+            <div class="form-message" id="decisionMessage" role="status"></div>
+            <div class="stage-actions">
+              <button class="button ghost" id="cancelDecision" type="button">Cancel</button>
+              <button class="button ${decisionMode === "reject" ? "danger" : decisionMode === "modify" ? "warning" : "primary"}"
+                id="sendDecision" type="button" ${decisionMode ? "" : "disabled"}>
+                Send ${escapeHtml(decisionMode || "decision")}
+              </button>
+            </div>
+          </section>
+          <div class="activity-log">
+            Proposal received ${timestamp(eventTime(proposal))} · Any approved execution is SIMULATED and cannot change a real service.
+          </div>
+        </article>`;
+
+      bindProposalEvents();
+    }
+
+    function capitalize(value) {
+      const string = String(value || "");
+      return string ? string[0].toUpperCase() + string.slice(1) : "";
+    }
+
+    function requiresTypedConfirmation(decisionMode, safetyClass) {
+      return safetyClass === "destructive" && (decisionMode === "approve" || decisionMode === "modify");
+    }
+
+    function bindProposalEvents() {
+      elements.proposalContent.querySelectorAll(".decision-choice").forEach((button) => {
+        button.addEventListener("click", () => {
+          state.decisionMode = button.dataset.decision;
+          renderProposal();
+          document.getElementById("decisionStage")?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+        });
+      });
+
+      document.getElementById("cancelDecision")?.addEventListener("click", () => {
+        state.decisionMode = null;
+        renderProposal();
+      });
+
+      document.getElementById("addParam")?.addEventListener("click", () => {
+        document.getElementById("paramsEditor")?.insertAdjacentHTML("beforeend", paramRowHtml());
+        bindRemoveParamButtons();
+      });
+
+      document.getElementById("modifiedActionTarget")?.addEventListener("input", updateConfirmationTarget);
+      document.getElementById("sendDecision")?.addEventListener("click", submitDecision);
+      bindRemoveParamButtons();
+    }
+
+    function bindRemoveParamButtons() {
+      document.querySelectorAll(".remove-param").forEach((button) => {
+        button.onclick = () => {
+          const editor = document.getElementById("paramsEditor");
+          button.closest(".param-row")?.remove();
+          if (editor && !editor.querySelector(".param-row")) {
+            editor.insertAdjacentHTML("beforeend", paramRowHtml());
+            bindRemoveParamButtons();
+          }
+        };
+      });
+    }
+
+    function updateConfirmationTarget() {
+      const target = document.getElementById("modifiedActionTarget")?.value || "";
+      const label = document.getElementById("confirmationTarget");
+      if (label) label.textContent = target;
+    }
+
+    function parseParameterValue(rawValue) {
+      const trimmed = rawValue.trim();
+      if (trimmed === "") return "";
+      if (trimmed === "true") return true;
+      if (trimmed === "false") return false;
+      if (trimmed === "null") return null;
+      if (/^-?(?:\d+\.?\d*|\.\d+)$/.test(trimmed)) return Number(trimmed);
+      if ((trimmed.startsWith("[") && trimmed.endsWith("]")) ||
+          (trimmed.startsWith("{") && trimmed.endsWith("}"))) {
+        try {
+          return JSON.parse(trimmed);
+        } catch {
+          return rawValue;
+        }
+      }
+      return rawValue;
+    }
+
+    function collectModifiedParams() {
+      const params = {};
+      const rows = document.querySelectorAll("#paramsEditor .param-row");
+      for (const row of rows) {
+        const keyInput = row.querySelector(".param-key-input");
+        const valueInput = row.querySelector(".param-value-input");
+        const key = keyInput.value.trim();
+        if (!key) {
+          if (valueInput.value.trim()) throw new Error("Every parameter value needs a key.");
+          continue;
+        }
+        if (Object.prototype.hasOwnProperty.call(params, key)) {
+          throw new Error(`Parameter "${key}" is duplicated.`);
+        }
+        params[key] = parseParameterValue(valueInput.value);
+      }
+      return params;
+    }
+
+    async function submitDecision() {
+      if (!state.proposal || !state.decisionMode || state.submittingDecision) return;
+
+      const mode = state.decisionMode;
+      const message = document.getElementById("decisionMessage");
+      const sendButton = document.getElementById("sendDecision");
+      const reviewerNote = document.getElementById("reviewerNote")?.value.trim() || "";
+      let modifiedAction = null;
+      let target = state.proposal.action_target || "";
+
+      try {
+        if (mode === "modify") {
+          const actionType = document.getElementById("modifiedActionType")?.value;
+          target = document.getElementById("modifiedActionTarget")?.value.trim() || "";
+          if (!ACTION_TYPES.includes(actionType)) throw new Error("Select a whitelisted action type.");
+          if (!target) throw new Error("Action target is required.");
+          modifiedAction = {
+            ...state.proposal,
+            action_type: actionType,
+            safety_class: SAFETY_CLASS_FOR_ACTION[actionType],
+            action_target: target,
+            action_params: collectModifiedParams()
+          };
+        }
+
+        if (requiresTypedConfirmation(mode, String(state.proposal.safety_class || "").toLowerCase())) {
+          const typed = document.getElementById("typedConfirmation")?.value || "";
+          if (typed !== target) {
+            throw new Error(`Typed confirmation must exactly match "${target}".`);
+          }
+        }
+
+        state.submittingDecision = true;
+        sendButton.disabled = true;
+        message.textContent = "Sending decision…";
+        message.classList.remove("error");
+
+        const body = {
+          proposal_id: state.proposal.proposal_id,
+          decision: mode,
+          reviewer_note: reviewerNote || null,
+          modified_action: modifiedAction,
+          typed_confirmation: requiresTypedConfirmation(
+            mode,
+            String(state.proposal.safety_class || "").toLowerCase()
+          ) ? target : null
+        };
+
+        const response = await fetch("/decisions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Accept": "application/json" },
+          body: JSON.stringify(body)
+        });
+
+        const responseBody = await readResponse(response);
+        if (!response.ok) {
+          throw new Error(apiError(responseBody, `Decision request failed (${response.status})`));
+        }
+
+        message.textContent = "Decision accepted; awaiting LaserData stream confirmation.";
+      } catch (error) {
+        message.textContent = error instanceof Error ? error.message : "Unable to send decision.";
+        message.classList.add("error");
+      } finally {
+        state.submittingDecision = false;
+        if (sendButton?.isConnected) sendButton.disabled = false;
+      }
+    }
+
+    async function readResponse(response) {
+      const text = await response.text();
+      if (!text) return null;
+      try {
+        return JSON.parse(text);
+      } catch {
+        return text;
+      }
+    }
+
+    function apiError(payload, fallback) {
+      if (typeof payload === "string" && payload.trim()) return payload;
+      if (payload && typeof payload === "object") {
+        return payload.detail || payload.error || payload.message || fallback;
+      }
+      return fallback;
+    }
+
+    function handleAlert(payload) {
+      const alert = normalizePayload(payload, "alert");
+      if (!alert || typeof alert !== "object") {
+        showStreamDataError("Alert event did not contain a JSON object.");
+        return;
+      }
+      const enriched = { ...alert, received_at: eventTime(alert) || new Date().toISOString() };
+      state.alerts.push(enriched);
+      if (state.alerts.length > MAX_ALERTS) state.alerts.shift();
+      renderAlerts();
+    }
+
+    function handleHypotheses(payload) {
+      const hypothesisSet = normalizePayload(payload, "hypotheses_set");
+      const normalized = Array.isArray(hypothesisSet)
+        ? { hypotheses: hypothesisSet, generated_at: new Date().toISOString() }
+        : hypothesisSet;
+      if (!normalized || typeof normalized !== "object" || !Array.isArray(normalized.hypotheses)) {
+        showStreamDataError("Hypotheses event did not contain a hypotheses array.");
+        return;
+      }
+      state.hypothesisSet = normalized;
+      state.selectedHypothesisId = normalized.hypotheses[0]?.hypothesis_id || null;
+      renderHypotheses();
+    }
+
+    function handleProposal(payload) {
+      const proposal = normalizePayload(payload, "proposal");
+      if (!proposal || typeof proposal !== "object" || !proposal.proposal_id) {
+        showStreamDataError("Proposal event did not contain a proposal_id.");
+        return;
+      }
+      state.proposal = { ...proposal, received_at: eventTime(proposal) || new Date().toISOString() };
+      ensureMotion(proposal.proposal_id, proposal.alert_id || null);
+      state.decisionMode = null;
+      renderMotionTimeline();
+      renderProposal();
+    }
+
+    function handleDecision(payload) {
+      const decision = normalizePayload(payload, "decision");
+      if (!decision || typeof decision !== "object") {
+        showStreamDataError("Decision event did not contain a JSON object.");
+        return;
+      }
+      state.lastDecision = { ...decision, received_at: eventTime(decision) || new Date().toISOString() };
+      if (!decision.proposal_id) {
+        showStreamDataError("Decision event did not contain a proposal_id.");
+        return;
+      }
+      addMotionEvent("decision", state.lastDecision, decision.proposal_id);
+      if (!state.proposal || !decision.proposal_id || decision.proposal_id === state.proposal.proposal_id) {
+        state.proposal = null;
+        state.decisionMode = null;
+      }
+      renderProposal();
+    }
+
+    function handleAction(payload) {
+      const action = normalizePayload(payload, "action");
+      const validStatuses = ["dispatching", "executed"];
+      if (!action || typeof action !== "object" || !action.proposal_id || !action.alert_id ||
+          !validStatuses.includes(action.status) || typeof action.action_type !== "string" ||
+          typeof action.action_target !== "string" || action.simulated !== true || !action.timestamp) {
+        showStreamDataError("Action event must contain its full simulated action contract.");
+        return;
+      }
+      addMotionEvent(
+        "action",
+        { ...action, received_at: eventTime(action) || new Date().toISOString() },
+        action.proposal_id,
+        action.alert_id
+      );
+    }
+
+    function handleOutcome(payload) {
+      const outcome = normalizePayload(payload, "outcome");
+      const validStatuses = ["watching", "verified", "partial", "no_effect"];
+      if (!outcome || typeof outcome !== "object" || !outcome.proposal_id || !outcome.alert_id ||
+          !validStatuses.includes(outcome.status) || !isNonNegativeNumber(outcome.timeout_seconds) ||
+          Number(outcome.timeout_seconds) > 60 || !outcome.timestamp) {
+        showStreamDataError("Outcome event must contain its full contract with a timeout from 0 to 60 seconds.");
+        return;
+      }
+      addMotionEvent(
+        "outcome",
+        { ...outcome, received_at: eventTime(outcome) || new Date().toISOString() },
+        outcome.proposal_id,
+        outcome.alert_id
+      );
+    }
+
+    function handleResolution(payload) {
+      const resolution = normalizePayload(payload, "resolution");
+      const validOutcomes = ["verified", "partial", "no_effect", "rejected"];
+      const decision = resolution?.reviewer_decision;
+      if (!resolution || typeof resolution !== "object" || !resolution.incident_id || !resolution.alert_id ||
+          !validOutcomes.includes(resolution.outcome) || !decision?.proposal_id ||
+          !["approve", "reject", "modify"].includes(decision.decision) || !decision.timestamp ||
+          !isNonNegativeNumber(resolution.total_latency_ms) ||
+          !isNonNegativeNumber(resolution.cost_usd)) {
+        showStreamDataError("Resolution event did not contain the final Resolution contract.");
+        return;
+      }
+      addMotionEvent(
+        "resolution",
+        { ...resolution, received_at: eventTime(resolution) || new Date().toISOString() },
+        decision.proposal_id,
+        resolution.alert_id
+      );
+      renderProposal();
+    }
+
+    function showStreamDataError(message) {
+      setStatus(elements.streamStatus, elements.streamStatusText, "error", "Event data error");
+      const existing = document.getElementById("streamDataError");
+      if (existing) existing.remove();
+      const error = document.createElement("div");
+      error.className = "error-box";
+      error.id = "streamDataError";
+      error.textContent = message;
+      elements.alertFeed.prepend(error);
+    }
+
+    function attachEventStream() {
+      if (!("EventSource" in window)) {
+        setStatus(elements.streamStatus, elements.streamStatusText, "error", "SSE unsupported");
+        return;
+      }
+
+      const stream = new EventSource("/events");
+      stream.onopen = () => {
+        setStatus(elements.streamStatus, elements.streamStatusText, "connected", "Events live");
+      };
+      stream.onerror = () => {
+        setStatus(elements.streamStatus, elements.streamStatusText, "error", "Events reconnecting");
+      };
+
+      const handlers = {
+        alert: handleAlert,
+        hypotheses: handleHypotheses,
+        proposal: handleProposal,
+        decision: handleDecision,
+        action: handleAction,
+        outcome: handleOutcome,
+        resolution: handleResolution
+      };
+
+      Object.entries(handlers).forEach(([eventType, handler]) => {
+        stream.addEventListener(eventType, (event) => {
+          try {
+            handler(JSON.parse(event.data));
+          } catch (error) {
+            showStreamDataError(
+              `${capitalize(eventType)} event contained invalid JSON: ${error instanceof Error ? error.message : "parse error"}`
+            );
+          }
+        });
+      });
+    }
+
+    async function checkHealth() {
+      setStatus(elements.healthStatus, elements.healthStatusText, "checking", "API checking");
+      try {
+        const response = await fetch("/health", {
+          method: "GET",
+          headers: { "Accept": "application/json" },
+          cache: "no-store"
+        });
+        const payload = await readResponse(response);
+        if (!response.ok) throw new Error(apiError(payload, `Health check failed (${response.status})`));
+        updateGuildStatus(payload);
+        setStatus(elements.healthStatus, elements.healthStatusText, "healthy", "API healthy");
+      } catch (error) {
+        setStatus(elements.healthStatus, elements.healthStatusText, "error", "");
+        elements.healthStatusText.innerHTML =
+          `${escapeHtml(error instanceof Error ? error.message : "API unavailable")} · <button class="health-retry" type="button">retry</button>`;
+        elements.healthStatusText.querySelector(".health-retry")?.addEventListener("click", checkHealth);
+      }
+    }
+
+    elements.graphEnabled.addEventListener("change", () => {
+      elements.graphToggleState.textContent = elements.graphEnabled.checked ? "ON" : "OFF";
+    });
+
+    elements.alertForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (state.submittingAlert) return;
+
+      const form = new FormData(elements.alertForm);
+      const service = String(form.get("service") || "").trim();
+      const metric = String(form.get("metric") || "").trim();
+      const rawValue = String(form.get("value") || "").trim();
+      const rawThreshold = String(form.get("threshold") || "").trim();
+      const severity = String(form.get("severity") || "");
+      const value = Number(rawValue);
+      const threshold = Number(rawThreshold);
+      const errors = [];
+
+      if (!service) errors.push("Service is required.");
+      if (!metric) errors.push("Metric is required.");
+      if (!rawValue || !Number.isFinite(value)) errors.push("Value must be a valid number.");
+      if (!rawThreshold || !Number.isFinite(threshold)) errors.push("Threshold must be a valid number.");
+      if (!["critical", "warning", "info"].includes(severity)) errors.push("Select a valid severity.");
+
+      ["service", "metric", "value", "threshold", "severity"].forEach((id) => {
+        document.getElementById(id).removeAttribute("aria-invalid");
+      });
+
+      if (errors.length) {
+        if (!service) document.getElementById("service").setAttribute("aria-invalid", "true");
+        if (!metric) document.getElementById("metric").setAttribute("aria-invalid", "true");
+        if (!rawValue || !Number.isFinite(value)) document.getElementById("value").setAttribute("aria-invalid", "true");
+        if (!rawThreshold || !Number.isFinite(threshold)) document.getElementById("threshold").setAttribute("aria-invalid", "true");
+        if (!["critical", "warning", "info"].includes(severity)) {
+          document.getElementById("severity").setAttribute("aria-invalid", "true");
+        }
+        setAlertMessage(errors[0], true);
+        return;
+      }
+
+      const payload = {
+        service,
+        metric,
+        value,
+        threshold,
+        severity,
+        graph_enabled: elements.graphEnabled.checked
+      };
+
+      state.submittingAlert = true;
+      elements.sendAlert.disabled = true;
+      setAlertMessage("Sending alert…");
+
+      try {
+        const response = await fetch("/alerts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Accept": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const responseBody = await readResponse(response);
+        if (!response.ok) {
+          throw new Error(apiError(responseBody, `Alert request failed (${response.status})`));
+        }
+        setAlertMessage("Alert accepted by the API; awaiting live events.");
+        elements.alertForm.reset();
+        elements.graphEnabled.checked = payload.graph_enabled;
+        elements.graphToggleState.textContent = payload.graph_enabled ? "ON" : "OFF";
+      } catch (error) {
+        setAlertMessage(error instanceof Error ? error.message : "Unable to send alert.", true);
+      } finally {
+        state.submittingAlert = false;
+        elements.sendAlert.disabled = false;
+      }
+    });
+
+    attachEventStream();
+    checkHealth();
+  </script>
+</body>
+</html>

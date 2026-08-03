@@ -1,0 +1,47 @@
+{
+  "scenario_id": "s02_upstream_failure",
+  "title": "Checkout failure caused two hops upstream",
+  "trigger": {
+    "alert_id": "alrt_s02_checkout_errors",
+    "fired_at": "2026-08-03T14:22:00Z",
+    "severity": "critical",
+    "service": "checkout-service",
+    "metric": "error_rate_pct",
+    "value": 18.4,
+    "threshold": 2.0,
+    "labels": {
+      "env": "prod",
+      "region": "us-east-1",
+      "cluster": "primary"
+    },
+    "annotations": {
+      "summary": "Checkout requests are failing"
+    }
+  },
+  "seed": {
+    "deploy": {
+      "id": "deploy_postgres_patch_8c91ef",
+      "service": "postgres-primary",
+      "commit_hash": "8c91ef",
+      "deployed_at": "2026-08-03T12:22:00Z",
+      "deployed_by": "database-team"
+    },
+    "past_incident": {
+      "id": "inc_postgres_pool_20260618",
+      "service": "checkout-service",
+      "metric": "error_rate_pct",
+      "root_cause": "dependency_failure",
+      "resolution": "restart",
+      "resolved": true,
+      "timestamp": "2026-06-18T07:40:00Z"
+    },
+    "runbook_id": "rb_reset_payment_pool"
+  },
+  "expected": {
+    "hypothesis_type": "dependency_failure",
+    "affected_entity": "postgres-primary",
+    "action_type": "restart",
+    "action_target": "payments-api",
+    "safety_class": "standard"
+  }
+}

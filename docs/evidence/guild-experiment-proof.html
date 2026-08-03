@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Guild AI Experiment Proof</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b1020;
+      --panel: #141b2d;
+      --line: #2b3857;
+      --text: #eef3ff;
+      --muted: #aab7d1;
+      --good: #67e8a5;
+      --accent: #7dd3fc;
+      --bad: #fda4af;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: radial-gradient(circle at top, #172341, var(--bg) 46%);
+      color: var(--text);
+      font: 15px/1.5 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main { width: min(1100px, calc(100% - 32px)); margin: 40px auto; }
+    h1 { margin: 0 0 8px; font-size: clamp(28px, 5vw, 44px); }
+    h2 { margin-top: 0; font-size: 18px; }
+    .subtitle, .note { color: var(--muted); }
+    .banner {
+      margin: 24px 0;
+      padding: 14px 18px;
+      border: 1px solid var(--accent);
+      border-radius: 12px;
+      background: #10263a;
+      color: var(--accent);
+      font-weight: 700;
+    }
+    .meta, .runs { display: grid; gap: 16px; }
+    .meta { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+    .runs { grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); margin-top: 16px; }
+    .card {
+      padding: 20px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: color-mix(in srgb, var(--panel) 94%, transparent);
+      box-shadow: 0 16px 40px #0005;
+    }
+    .value { font-size: 24px; font-weight: 750; }
+    .status { color: var(--good); font-weight: 750; }
+    .status.error, .artifact.missing { color: var(--bad); }
+    code {
+      overflow-wrap: anywhere;
+      color: #d9e7ff;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    dl {
+      display: grid;
+      grid-template-columns: minmax(155px, 1fr) auto;
+      gap: 8px 16px;
+      margin: 18px 0 0;
+    }
+    dt { color: var(--muted); }
+    dd { margin: 0; font-variant-numeric: tabular-nums; text-align: right; }
+    .artifact {
+      margin-top: 18px;
+      padding-top: 14px;
+      border-top: 1px solid var(--line);
+      color: var(--good);
+    }
+    footer { margin-top: 24px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Legacy Guild AI experiment proof</h1>
+    <p class="subtitle">Three completed runs and one preserved regression over all three scenario packs.</p>
+    <div class="banner">Experiment tracking — not runtime handoff</div>
+
+    <section class="meta" aria-label="Environment verification">
+      <div class="card"><div class="note">Guild</div><div class="value">0.9.0</div></div>
+      <div class="card"><div class="note">Guild Python</div><div class="value">3.8.20</div></div>
+      <div class="card"><div class="note">Local state</div><div class="value"><code>.guild-home</code></div></div>
+      <div class="card"><div class="note">Completed artifacts</div><div class="value">3 / 3</div></div>
+    </section>
+
+    <section class="runs" aria-label="Guild run history">
+      <article class="card">
+        <h2>Grounded — all packs</h2>
+        <div class="status">Completed</div>
+        <p><code>6bdf055e54e046a5abd43275b8e58e15</code></p>
+        <p class="note">runbook-evaluation:grounded-all</p>
+        <dl>
+          <dt>mode</dt><dd>grounded</dd>
+          <dt>scenario_pack</dt><dd>all</dd>
+          <dt>hypothesis_accuracy</dt><dd>1.000000</dd>
+          <dt>action_accuracy</dt><dd>1.000000</dd>
+          <dt>safe_action_rate</dt><dd>1.000000</dd>
+          <dt>mean_confidence</dt><dd>0.633333</dd>
+          <dt>graph_query_latency_ms</dt><dd>611.333333</dd>
+          <dt>rocketride_call_success</dt><dd>1.000000</dd>
+          <dt>overall_pass</dt><dd>1.000000</dd>
+        </dl>
+        <div class="artifact">✓ Guild-generated <code>results.json</code> present</div>
+      </article>
+
+      <article class="card">
+        <h2>Graph off — captured regression</h2>
+        <div class="status error">Error</div>
+        <p><code>f475856f88e8498daaa3c1e029bff2ae</code></p>
+        <p class="note">runbook-evaluation:graph-off-all</p>
+        <dl>
+          <dt>mode</dt><dd>graph-off</dd>
+          <dt>scenario_pack</dt><dd>all</dd>
+          <dt>invalid confidence</dt><dd><code>low</code></dd>
+          <dt>failure</dt><dd>safe parser absent</dd>
+          <dt>exit status</dt><dd>1</dd>
+          <dt>scalars emitted</dt><dd>no</dd>
+        </dl>
+        <div class="artifact missing">No <code>results.json</code>; run history retained</div>
+      </article>
+
+      <article class="card">
+        <h2>Graph off — pre-fix retry</h2>
+        <div class="status">Completed</div>
+        <p><code>313004c4c88845fe8e93a45eec941fdd</code></p>
+        <p class="note">runbook-evaluation:graph-off-all</p>
+        <dl>
+          <dt>mode</dt><dd>graph-off</dd>
+          <dt>scenario_pack</dt><dd>all</dd>
+          <dt>hypothesis_accuracy</dt><dd>1.000000</dd>
+          <dt>action_accuracy</dt><dd>1.000000</dd>
+          <dt>safe_action_rate</dt><dd>1.000000</dd>
+          <dt>mean_confidence</dt><dd>0.383333</dd>
+          <dt>graph_query_latency_ms</dt><dd>0.000000</dd>
+          <dt>rocketride_call_success</dt><dd>1.000000</dd>
+          <dt>overall_pass</dt><dd>1.000000</dd>
+        </dl>
+        <div class="artifact">✓ Guild-generated <code>results.json</code> present</div>
+      </article>
+
+      <article class="card">
+        <h2>Graph off — parser fixed</h2>
+        <div class="status">Completed</div>
+        <p><code>768670f813a844f8b513cee80efb3e1e</code></p>
+        <p class="note">runbook-evaluation:graph-off-all</p>
+        <dl>
+          <dt>mode</dt><dd>graph-off</dd>
+          <dt>scenario_pack</dt><dd>all</dd>
+          <dt>hypothesis_accuracy</dt><dd>1.000000</dd>
+          <dt>action_accuracy</dt><dd>1.000000</dd>
+          <dt>safe_action_rate</dt><dd>1.000000</dd>
+          <dt>mean_confidence</dt><dd>0.350000</dd>
+          <dt>graph_query_latency_ms</dt><dd>0.000000</dd>
+          <dt>rocketride_call_success</dt><dd>1.000000</dd>
+          <dt>overall_pass</dt><dd>1.000000</dd>
+        </dl>
+        <div class="artifact">✓ Guild-generated <code>results.json</code> present</div>
+      </article>
+    </section>
+
+    <footer>
+      Verified with <code>guild runs</code>, <code>guild runs info</code>,
+      <code>guild ls --generated</code>, and <code>guild compare --csv</code>.
+      The initial graph-off failure is retained as the regression that led to
+      safe confidence parsing; the final graph-off run uses the fixed source.
+    </footer>
+  </main>
+</body>
+</html>

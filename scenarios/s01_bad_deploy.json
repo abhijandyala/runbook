@@ -1,0 +1,47 @@
+{
+  "scenario_id": "s01_bad_deploy",
+  "title": "Checkout latency after a bad deploy",
+  "trigger": {
+    "alert_id": "alrt_s01_checkout_latency",
+    "fired_at": "2026-08-03T09:47:12Z",
+    "severity": "critical",
+    "service": "checkout-service",
+    "metric": "latency_p99_ms",
+    "value": 2400,
+    "threshold": 800,
+    "labels": {
+      "env": "prod",
+      "region": "us-east-1",
+      "cluster": "primary"
+    },
+    "annotations": {
+      "summary": "Checkout latency degraded"
+    }
+  },
+  "seed": {
+    "deploy": {
+      "id": "deploy_checkout_a7f3d2",
+      "service": "checkout-service",
+      "commit_hash": "a7f3d2",
+      "deployed_at": "2026-08-03T09:31:00Z",
+      "deployed_by": "release-bot"
+    },
+    "past_incident": {
+      "id": "inc_checkout_20260713",
+      "service": "checkout-service",
+      "metric": "latency_p99_ms",
+      "root_cause": "recent_deploy",
+      "resolution": "rollback",
+      "resolved": true,
+      "timestamp": "2026-07-13T04:12:00Z"
+    },
+    "runbook_id": "rb_post_deploy_latency"
+  },
+  "expected": {
+    "hypothesis_type": "recent_deploy",
+    "affected_entity": "deploy_checkout_a7f3d2",
+    "action_type": "rollback",
+    "action_target": "deploy_checkout_a7f3d2",
+    "safety_class": "standard"
+  }
+}

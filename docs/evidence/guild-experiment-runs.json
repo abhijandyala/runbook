@@ -1,0 +1,124 @@
+{
+  "title": "Legacy Guild AI experiment proof",
+  "statement": "Experiment tracking — not runtime handoff",
+  "guild_version": "0.9.0",
+  "python_version": "3.8.20",
+  "guild_home": ".guild-home",
+  "project_python": {
+    "absolute_existing_interpreter_verified": true,
+    "display": ".venv/bin/python"
+  },
+  "runs": [
+    {
+      "id": "6bdf055e54e046a5abd43275b8e58e15",
+      "operation": "runbook-evaluation:grounded-all",
+      "status": "completed",
+      "flags": {
+        "mode": "grounded",
+        "scenario_pack": "all",
+        "output_path": "results.json"
+      },
+      "metrics": {
+        "hypothesis_accuracy": 1.0,
+        "action_accuracy": 1.0,
+        "safe_action_rate": 1.0,
+        "mean_confidence": 0.633333,
+        "graph_query_latency_ms": 611.333333,
+        "rocketride_call_success": 1.0,
+        "overall_pass": 1.0
+      },
+      "artifacts": {
+        "results.json": {
+          "present": true,
+          "guild_generated": true
+        }
+      }
+    },
+    {
+      "id": "f475856f88e8498daaa3c1e029bff2ae",
+      "operation": "runbook-evaluation:graph-off-all",
+      "status": "error",
+      "flags": {
+        "mode": "graph-off",
+        "scenario_pack": "all",
+        "output_path": "results.json"
+      },
+      "captured_regression": {
+        "category": "confidence_parsing",
+        "summary": "A nonnumeric model confidence label caused a ValueError before safe parsing was added.",
+        "invalid_value": "low",
+        "exit_status": 1,
+        "scalars_emitted": false
+      },
+      "artifacts": {
+        "results.json": {
+          "present": false,
+          "guild_generated": false
+        }
+      }
+    },
+    {
+      "id": "313004c4c88845fe8e93a45eec941fdd",
+      "operation": "runbook-evaluation:graph-off-all",
+      "status": "completed",
+      "flags": {
+        "mode": "graph-off",
+        "scenario_pack": "all",
+        "output_path": "results.json"
+      },
+      "metrics": {
+        "hypothesis_accuracy": 1.0,
+        "action_accuracy": 1.0,
+        "safe_action_rate": 1.0,
+        "mean_confidence": 0.383333,
+        "graph_query_latency_ms": 0.0,
+        "rocketride_call_success": 1.0,
+        "overall_pass": 1.0
+      },
+      "artifacts": {
+        "results.json": {
+          "present": true,
+          "guild_generated": true
+        }
+      }
+    },
+    {
+      "id": "768670f813a844f8b513cee80efb3e1e",
+      "operation": "runbook-evaluation:graph-off-all",
+      "status": "completed",
+      "flags": {
+        "mode": "graph-off",
+        "scenario_pack": "all",
+        "output_path": "results.json"
+      },
+      "metrics": {
+        "hypothesis_accuracy": 1.0,
+        "action_accuracy": 1.0,
+        "safe_action_rate": 1.0,
+        "mean_confidence": 0.35,
+        "graph_query_latency_ms": 0.0,
+        "rocketride_call_success": 1.0,
+        "overall_pass": 1.0
+      },
+      "artifacts": {
+        "results.json": {
+          "present": true,
+          "guild_generated": true
+        }
+      }
+    }
+  ],
+  "verification": {
+    "guild_check": "passed",
+    "guild_operations": "passed",
+    "guild_runs": "passed",
+    "guild_runs_info": "passed",
+    "guild_ls_generated": "passed",
+    "guild_compare": "passed"
+  },
+  "limitations": [
+    "The initial graph-off run f475856f88e8498daaa3c1e029bff2ae is retained as a captured regression: the model returned the nonnumeric confidence label 'low', causing the run to fail before the parser fix.",
+    "Run 768670f813a844f8b513cee80efb3e1e is the successful post-fix graph-off all-packs verification.",
+    "These runs prove legacy Guild experiment tracking only and do not prove runtime agent handoff."
+  ]
+}

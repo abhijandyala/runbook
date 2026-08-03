@@ -1,0 +1,133 @@
+{
+  "alert_ids": [
+    "alrt_s01_checkout_latency",
+    "alrt_s02_checkout_errors",
+    "alrt_judge_unknown_04c43eb66cde"
+  ],
+  "idle_duration_seconds": 65.002,
+  "idle_health": {
+    "action_type": "diagnostic",
+    "pass": true,
+    "role": "remediator",
+    "safety_class": "safe",
+    "trace_id": "trace_rr_idle_health_d4700c5c6dc5"
+  },
+  "overall_pass": true,
+  "passes": {
+    "direct_anthropic_import_audit": true,
+    "idle_duration_at_least_65_seconds": true,
+    "judge_novel_alert": true,
+    "pack_1": true,
+    "pack_2": true,
+    "pipeline_continuity_after_idle": true,
+    "pipeline_continuity_after_judge": true,
+    "pipeline_continuity_after_packs": true,
+    "post_idle_health_task": true
+  },
+  "project_uuid": "5621bc5a-2ff1-4021-8592-81383fa4890f",
+  "scenario_outcomes": {
+    "judge_novel": {
+      "alert_id": "alrt_judge_unknown_04c43eb66cde",
+      "cloud_attempts": {
+        "diagnosis": 1,
+        "remediation": 1
+      },
+      "grounded": true,
+      "observed": {
+        "action_target": "alerting-service",
+        "action_type": "diagnostic",
+        "confidence": 0.25,
+        "hypothesis_type": "unknown",
+        "remediator_confidence": 0.25,
+        "safety_class": "safe"
+      },
+      "pass": true,
+      "passes": {
+        "allowed_safe_action": true,
+        "diagnosis_cloud_reasoning": true,
+        "grounded_graph_miss": true,
+        "low_confidence": true,
+        "remediation_cloud_reasoning": true,
+        "unique_unknown_service": true
+      },
+      "scenario_id": "judge_novel_unknown_service",
+      "service_id": "judge-unknown-service-04c43eb66cde",
+      "trace_id": "alrt_judge_unknown_04c43eb66cde"
+    },
+    "pack_1": {
+      "alert_id": "alrt_s01_checkout_latency",
+      "cloud_attempts": {
+        "diagnosis": 1,
+        "remediation": 1
+      },
+      "expected": {
+        "action_target": "deploy_checkout_a7f3d2",
+        "action_type": "rollback",
+        "affected_entity": "deploy_checkout_a7f3d2",
+        "hypothesis_type": "recent_deploy",
+        "safety_class": "standard"
+      },
+      "grounded": true,
+      "label": "pack_1",
+      "observed": {
+        "action_target": "deploy_checkout_a7f3d2",
+        "action_type": "rollback",
+        "affected_entity": "deploy_checkout_a7f3d2",
+        "confidence": 0.95,
+        "hypothesis_type": "recent_deploy",
+        "safety_class": "standard"
+      },
+      "pass": true,
+      "passes": {
+        "diagnosis_cloud_reasoning": true,
+        "expected_outcome": true,
+        "grounded_diagnosis": true,
+        "remediation_cloud_reasoning": true
+      },
+      "scenario_id": "s01_bad_deploy",
+      "trace_id": "alrt_s01_checkout_latency"
+    },
+    "pack_2": {
+      "alert_id": "alrt_s02_checkout_errors",
+      "cloud_attempts": {
+        "diagnosis": 1,
+        "remediation": 1
+      },
+      "expected": {
+        "action_target": "payments-api",
+        "action_type": "restart",
+        "affected_entity": "postgres-primary",
+        "hypothesis_type": "dependency_failure",
+        "safety_class": "standard"
+      },
+      "grounded": true,
+      "label": "pack_2",
+      "observed": {
+        "action_target": "payments-api",
+        "action_type": "restart",
+        "affected_entity": "postgres-primary",
+        "confidence": 0.7,
+        "hypothesis_type": "dependency_failure",
+        "safety_class": "standard"
+      },
+      "pass": true,
+      "passes": {
+        "diagnosis_cloud_reasoning": true,
+        "expected_outcome": true,
+        "grounded_diagnosis": true,
+        "remediation_cloud_reasoning": true
+      },
+      "scenario_id": "s02_upstream_failure",
+      "trace_id": "alrt_s02_checkout_errors"
+    }
+  },
+  "schema_version": 1,
+  "timestamp": "2026-08-03T18:25:27.045687Z",
+  "token_fingerprint": "bfec410a7a621b00f486b4487c7e4f3208419b6b9cbe18db7490b889f84e26ca",
+  "trace_ids": [
+    "alrt_s01_checkout_latency",
+    "alrt_s02_checkout_errors",
+    "trace_rr_idle_health_d4700c5c6dc5",
+    "alrt_judge_unknown_04c43eb66cde"
+  ]
+}

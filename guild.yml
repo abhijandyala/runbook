@@ -1,0 +1,124 @@
+- model: runbook-evaluation
+  description: Read-only runbook diagnosis and remediation experiment tracking
+  operations:
+    grounded-all:
+      description: Evaluate all three scenario packs with graph grounding
+      exec: ${project_python} -m eval.run ${flag_args}
+      flags-dest: args
+      flags:
+        mode:
+          default: grounded
+          choices: [grounded, graph-off]
+          arg-skip: yes
+        scenario_pack:
+          default: all
+          choices: [all, pack1, pack2, pack3]
+          arg-name: scenario-pack
+          arg-skip: yes
+        output_path:
+          default: results.json
+          arg-name: output-path
+          type: string
+        project_python:
+          default: .venv/bin/python
+          type: existing-path
+          arg-skip: yes
+      sourcecode:
+        dest: .
+        select:
+          - exclude: .env
+          - exclude: .env.*
+          - exclude:
+              dir: .venv
+          - exclude:
+              dir: .guild-venv
+          - exclude:
+              dir: .guild-home
+          - exclude:
+              dir: docs/evidence
+          - exclude: '**/*secret*'
+          - exclude: '**/*credential*'
+      output-scalars:
+        hypothesis_accuracy: '^hypothesis_accuracy: (\value)$'
+        action_accuracy: '^action_accuracy: (\value)$'
+        safe_action_rate: '^safe_action_rate: (\value)$'
+        mean_confidence: '^mean_confidence: (\value)$'
+        graph_query_latency_ms: '^graph_query_latency_ms: (\value)$'
+        rocketride_call_success: '^rocketride_call_success: (\value)$'
+        overall_pass: '^overall_pass: (\value)$'
+      label: ${mode}-${scenario_pack}
+      tags:
+        - guild-ai
+        - experiment-tracking
+        - read-only-evaluation
+      compare:
+        - .label
+        - =mode
+        - =scenario_pack
+        - hypothesis_accuracy
+        - action_accuracy
+        - safe_action_rate
+        - mean_confidence
+        - graph_query_latency_ms
+        - rocketride_call_success
+        - overall_pass
+    graph-off-all:
+      description: Evaluate all three packs with graph access disabled
+      exec: ${project_python} -m eval.run ${flag_args}
+      flags-dest: args
+      flags:
+        mode:
+          default: graph-off
+          choices: [grounded, graph-off]
+        scenario_pack:
+          default: all
+          choices: [all, pack1, pack2, pack3]
+          arg-name: scenario-pack
+          arg-skip: yes
+        output_path:
+          default: results.json
+          arg-name: output-path
+          type: string
+        project_python:
+          default: .venv/bin/python
+          type: existing-path
+          arg-skip: yes
+      sourcecode:
+        dest: .
+        select:
+          - exclude: .env
+          - exclude: .env.*
+          - exclude:
+              dir: .venv
+          - exclude:
+              dir: .guild-venv
+          - exclude:
+              dir: .guild-home
+          - exclude:
+              dir: docs/evidence
+          - exclude: '**/*secret*'
+          - exclude: '**/*credential*'
+      output-scalars:
+        hypothesis_accuracy: '^hypothesis_accuracy: (\value)$'
+        action_accuracy: '^action_accuracy: (\value)$'
+        safe_action_rate: '^safe_action_rate: (\value)$'
+        mean_confidence: '^mean_confidence: (\value)$'
+        graph_query_latency_ms: '^graph_query_latency_ms: (\value)$'
+        rocketride_call_success: '^rocketride_call_success: (\value)$'
+        overall_pass: '^overall_pass: (\value)$'
+      label: ${mode}-${scenario_pack}
+      tags:
+        - guild-ai
+        - experiment-tracking
+        - read-only-evaluation
+      compare:
+        - .label
+        - =mode
+        - =scenario_pack
+        - hypothesis_accuracy
+        - action_accuracy
+        - safe_action_rate
+        - mean_confidence
+        - graph_query_latency_ms
+        - rocketride_call_success
+        - overall_pass
